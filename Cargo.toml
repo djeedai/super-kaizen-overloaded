@@ -1,0 +1,22 @@
+[package]
+name = "unfair"
+version = "0.1.0"
+authors = ["Jerome Humbert <djeedai@gmail.com>"]
+edition = "2021"
+resolver = "2"
+description = ""
+keywords = ["game", "gamedev", "bevy"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+bevy = { version = "0.6", default-features = false, features = ["render", "bevy_winit", "png"] }
+bevy_tweening = "0.3.2"
+bevy_kira_audio = { version = "0.8.0", features = ["wav"] }
+leafwing-input-manager = "0.2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0.4"
+parking_lot = "0.11"
+
+bevy-inspector-egui = "0.8.2"
+bevy_prototype_debug_lines = "0.6.1"
