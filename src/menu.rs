@@ -25,7 +25,8 @@ impl Plugin for MenuPlugin {
                     .with_system(menu_setup)
                     .with_system(start_background_audio),
             )
-            .add_system_set(SystemSet::on_update(AppState::Menu).with_system(menu_run));
+            .add_system_set(SystemSet::on_update(AppState::Menu).with_system(menu_run))
+            .add_system_set(SystemSet::on_exit(AppState::Menu).with_system(menu_cleanup));
     }
 }
 
@@ -51,6 +52,7 @@ fn menu_run(
     mut q_animators: Query<(&Button, &mut Animator<Transform>)>,
     mut exit: EventWriter<AppExit>,
     audio: Res<KiraAudio>,
+    mut app_state: ResMut<State<AppState>>,
     //mut event_reader: EventReader<TweenCompleted>,
 ) {
     let (mut menu, action_state) = q_menu.single_mut();
@@ -58,12 +60,12 @@ fn menu_run(
     if action_state.just_pressed(&MenuAction::SelectNext) {
         menu.selected_index = (menu.selected_index + 1).min(2);
         audio.play_in_channel(menu.sound_click.clone(), &menu.sound_channel_sfx);
-        println!("NEXT");
+        //println!("NEXT");
     }
     if action_state.just_pressed(&MenuAction::SelectPrev) {
         menu.selected_index = (menu.selected_index - 1).max(0);
         audio.play_in_channel(menu.sound_click.clone(), &menu.sound_channel_sfx);
-        println!("PREV");
+        //println!("PREV");
     }
 
     //if event_reader.iter().any(|ev| ev.user_data == 0) {
@@ -101,7 +103,7 @@ fn menu_run(
 
     if action_state.just_pressed(&MenuAction::ClickButton) {
         match menu.selected_index {
-            0 => {}
+            0 => app_state.set(AppState::InGame).unwrap(),
             1 => {}
             2 => exit.send(AppExit),
             _ => unreachable!(),
@@ -215,6 +217,10 @@ fn menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 });
             });
     }
+}
+
+fn menu_cleanup(mut commands: Commands, query: Query<Entity, With<Menu>>) {
+    commands.entity(query.single()).despawn_recursive();
 }
 
 fn start_background_audio(asset_server: Res<AssetServer>, audio: Res<KiraAudio>) {
