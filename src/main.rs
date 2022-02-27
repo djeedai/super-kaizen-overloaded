@@ -16,7 +16,7 @@ mod menu;
 
 use debug::DebugPlugin;
 use enemy::EnemyPlugin;
-use game::GamePlugin;
+use game::{GamePlugin, Quad, Bullet};
 use menu::MenuPlugin;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -77,5 +77,5 @@ fn main() {
 
 fn boot(mut state: ResMut<State<AppState>>) {
     // workaround for on_enter() not working on initial state; use a dummy initial state instead
-    state.set(AppState::Menu).unwrap();
+    state.set(AppState::InGame).unwrap();
 }

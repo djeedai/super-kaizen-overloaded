@@ -80,7 +80,7 @@ impl Default for PlayerController {
 struct Player;
 
 #[derive(Component)]
-struct Bullet(pub Vec3);
+pub struct Bullet(pub Vec3);
 
 #[derive(Component, Default)]
 struct ShipController {
@@ -407,26 +407,6 @@ fn game_setup(
                     parent.spawn_scene(ship_mesh);
                 });
         });
-
-    // TEMP - Enemy
-    commands
-        .spawn_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Cube { size: 0.1 })),
-            material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-            transform: Transform::from_xyz(2.0, 0.0, 0.0),
-            ..Default::default()
-        })
-        .insert(Name::new("TEMP - Enemy"))
-        // Physics
-        .insert(RigidBody::KinematicPositionBased)
-        .insert(CollisionShape::Sphere { radius: 0.1 })
-        //.insert(Velocity::from_linear(Vec3::X * 5.))
-        //.insert(RotationConstraints::lock())
-        .insert(
-            CollisionLayers::none()
-                .with_group(Layer::Enemy)
-                .with_masks(&[Layer::World, Layer::Player, Layer::PlayerBullet]),
-        );
 
     // HUD
     let hud_mat_black = materials.add(StandardMaterial {
