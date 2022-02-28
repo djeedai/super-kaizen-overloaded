@@ -5,6 +5,7 @@ use bevy::{
     prelude::*,
 };
 use heron::prelude::*;
+use std::f32::consts::{PI, TAU};
 
 use crate::{AppState, Bullet, Layer, Quad};
 
@@ -36,15 +37,7 @@ impl EnemyManager {
     fn spawn(&self, mut commands: Commands, position: Vec3) {
         println!("SPAWN ENEMY @ {:?}", position);
         let mut enemy_controller = EnemyController::default();
-        enemy_controller.fire_tag = Some(Box::new(FireTagSpiral {
-            arms_count: 6,
-            bullet_speed: 4.3,
-            fire_delay: 0.04,
-            rotate_speed: 35_f32.to_radians(),
-            //
-            cur_time: 0.,
-            cur_angle: 0.,
-        }));
+        enemy_controller.fire_tag = Some(Box::new(FireTagSpiral::default()));
         commands
             .spawn_bundle(PbrBundle {
                 mesh: self.mesh.clone(),
@@ -77,10 +70,10 @@ struct FireTagContext<'w, 's> {
 
 impl<'w, 's> FireTagContext<'w, 's> {
     fn fire(&mut self, angle: f32, speed: f32) {
-        println!(
-            "FIRE: origin={:?} angle={} speed={}",
-            self.origin, angle, speed
-        );
+        // println!(
+        //     "FIRE: origin={:?} angle={} speed={}",
+        //     self.origin, angle, speed
+        // );
         let rot = Quat::from_rotation_z(angle);
         self.commands
             .spawn_bundle(PbrBundle {
@@ -118,25 +111,74 @@ struct FireTagSpiral {
     //
     cur_time: f32,
     cur_angle: f32,
+    cur_iter: i32,
+}
+
+impl Default for FireTagSpiral {
+    fn default() -> Self {
+        FireTagSpiral {
+            arms_count: 6,
+            bullet_speed: 4.3,
+            fire_delay: 0.04,
+            rotate_speed: 35_f32.to_radians(),
+            //
+            cur_time: 0.,
+            cur_angle: 0.,
+            cur_iter: 0,
+        }
+    }
 }
 
 impl FireTag for FireTagSpiral {
     fn execute(&mut self, mut context: &mut FireTagContext) {
         let dt = context.dt;
+        // println!(
+        //     "EXEC: dt={} cur_angle={} cur_iter={}",
+        //     dt, self.cur_angle, self.cur_iter
+        // );
         self.cur_time += dt;
+        let cone_angle = 30_f32.to_radians(); // need to be >= 60 deg for 6 arms, othewise there's a time gap!
         if self.cur_time >= self.fire_delay {
             self.cur_time = 0.; // for safety, run at most once per frame
-            let delta_angle = std::f32::consts::TAU / self.arms_count as f32;
-            let mut angle = self.cur_angle;
+            let delta_angle = TAU / self.arms_count as f32;
+            let mut angle = self.cur_angle % TAU;
+            // find the arm with a direction aiming closest to the player
+            // we need to stop firing for a bit always on the same arm, otherwise
+            // it's useless if this is distributed across 2 arms (not enough space
+            // on either of them to safely pass through).
+            let player_angle = PI; // TODO
+            let aim_arm_idx = (0..self.arms_count)
+                .map(|idx| (idx, (angle + delta_angle * idx as f32) % TAU))
+                .min_by(|(idx0, angle0), (id1, angle1)| {
+                    // equality cannot happen since arms are evenly spaced out
+                    if (angle0 - player_angle).abs() <= (angle1 - player_angle).abs() {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Greater
+                    }
+                })
+                .map(|(idx, _)| idx)
+                .unwrap_or(0);
+            //println!("AIM ARM = #{}", aim_arm_idx);
+            self.cur_iter += 1;
             // repeat
             for idx in 0..self.arms_count {
-                context.fire(angle, self.bullet_speed);
+                // println!(
+                //     "ARM #{}: angle={} min={} max={}",
+                //     idx,
+                //     angle,
+                //     PI - cone_angle,
+                //     PI + cone_angle
+                // );
+                if self.cur_iter % 25 >= 5 || idx != aim_arm_idx {
+                    context.fire(angle, self.bullet_speed);
+                }
                 // sequence
-                angle += delta_angle;
+                angle = (angle + delta_angle) % TAU;
             }
         }
         // sequence
-        self.cur_angle += self.rotate_speed * dt;
+        self.cur_angle = (self.cur_angle + self.rotate_speed * dt) % TAU;
     }
 }
 
@@ -160,6 +202,7 @@ impl EnemyController {
         bullet_mesh: Handle<Mesh>,
         bullet_material: Handle<StandardMaterial>,
     ) -> Commands<'w, 's> {
+        //println!("ENEMY_UPDATE: dt={} origin={:?}", dt, origin);
         let mut context = FireTagContext {
             dt,
             origin,
@@ -197,7 +240,7 @@ fn enemy_setup(
     manager.bullet_material = bullet_material;
 
     // TEMP
-    manager.spawn(commands, Vec3::new(2., 0., 0.));
+    manager.spawn(commands, Vec3::new(2.1, 0., 0.));
 }
 
 fn enemy_update(
@@ -206,7 +249,9 @@ fn enemy_update(
     time: Res<Time>,
     manager: Res<EnemyManager>,
 ) {
+    //println!("enemy_update() t={}", time.seconds_since_startup());
     for (mut enemy, transform) in query.iter_mut() {
+        //println!("enemy xform={:?}", transform);
         commands = enemy.update(
             time.delta_seconds(),
             transform.translation,
