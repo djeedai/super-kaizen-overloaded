@@ -3,7 +3,7 @@ use bevy::{
     asset::AssetStage,
     gltf::{Gltf, GltfMesh},
     input::gamepad::GamepadButtonType,
-    math::const_vec3,
+    math::const_vec2,
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
 };
@@ -106,50 +106,155 @@ struct LifebarOver;
 
 #[derive(Debug, Clone)]
 struct InitLifebarsEvent {
+    /// Entity holding the LifebarHud component of the lifebars to update.
+    entity: Entity,
     /// Colors of all lifebars, from undermost (closer to zero life) to topmost (first one to take damages).
     colors: Vec<Color>,
     /// Total life per lifebar.
     life_per_bar: f32,
 }
 
-#[derive(Component, Default)]
-struct HudManager {
-    lifebars_visible: bool,
-    lifebar_was_visible: bool,
+enum LifebarDirection {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Component)]
+struct LifebarHud {
+    direction: LifebarDirection,
+    visible: bool,
+    was_visible: bool,
+    visible_pos: Vec2,
+    hidden_pos: Vec2,
     /// Descriptions of all lifebars.
     lifebars: Vec<Lifebar>,
     /// Index of current lifebar.
-    lifebar_index: usize,
+    index: usize,
     /// Total life per lifebar.
-    lifebar_life: f32,
+    life: f32,
     /// Remaining life in current lifebar.
-    lifebar_remain_life: f32,
+    remain_life: f32,
     /// Force an update of the lifebar state (including colors).
-    lifebar_force_update: bool,
+    force_update: bool,
     /// Material for the next lifebar under the current one, if any.
     under_mat: Handle<StandardMaterial>,
     /// Material for the current lifebar.
     over_mat: Handle<StandardMaterial>,
+    underbar: Entity,
+    overbar: Entity,
 }
 
-const LIFEBAR_VISIBLE_POS: Vec3 = const_vec3!([0., 1.8, 0.]);
-const LIFEBAR_HIDDEN_POS: Vec3 = const_vec3!([0., 2.2, 0.]);
+impl Default for LifebarHud {
+    fn default() -> Self {
+        LifebarHud {
+            direction: LifebarDirection::Horizontal,
+            visible: true,
+            was_visible: true,
+            visible_pos: Vec2::ZERO,
+            hidden_pos: Vec2::ZERO,
+            lifebars: vec![],
+            index: 0,
+            life: 0.,
+            remain_life: 0.,
+            force_update: false,
+            under_mat: Handle::default(),
+            over_mat: Handle::default(),
+            underbar: Entity::from_raw(0),
+            overbar: Entity::from_raw(0),
+        }
+    }
+}
 
-impl HudManager {
+impl LifebarHud {
+    pub fn spawn<'w, 's>(
+        mut this: LifebarHud,
+        name: impl Into<std::borrow::Cow<'static, str>>,
+        pos: Vec2,
+        size_background: Vec2,
+        mat_background: Handle<StandardMaterial>,
+        size: Vec2,
+        mut commands: Commands<'w, 's>,
+        meshes: &mut Assets<Mesh>,
+        materials: &mut Assets<StandardMaterial>,
+    ) -> Commands<'w, 's> {
+        // Bars mesh
+        let mesh = meshes.add(Mesh::from(shape::Quad { size, flip: false }));
+
+        // Underbar material
+        this.under_mat = materials.add(StandardMaterial {
+            base_color: this.lifebars[0].color,
+            unlit: true,
+            alpha_mode: AlphaMode::Blend,
+            ..Default::default()
+        });
+
+        // Overbar material
+        this.over_mat = materials.add(StandardMaterial {
+            base_color: this.lifebars[this.lifebars.len() - 1].color,
+            unlit: true,
+            alpha_mode: AlphaMode::Blend,
+            ..Default::default()
+        });
+
+        let player = commands
+            .spawn_bundle(PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Quad {
+                    size: size_background,
+                    flip: false,
+                })),
+                material: mat_background,
+                transform: Transform::from_translation(Vec3::new(pos.x, pos.y, 1.)),
+                ..Default::default()
+            })
+            .insert(Name::new(name))
+            .insert(Animator::<Transform>::default().with_state(AnimatorState::Paused))
+            .with_children(|parent| {
+                this.underbar = parent
+                    .spawn_bundle(PbrBundle {
+                        mesh: mesh.clone(),
+                        material: this.under_mat.clone(),
+                        transform: Transform::from_xyz(0.0, 0.0, 0.001),
+                        ..Default::default()
+                    })
+                    .insert(LifebarUnder)
+                    .id();
+                this.overbar = parent
+                    .spawn_bundle(PbrBundle {
+                        mesh,
+                        material: this.over_mat.clone(),
+                        transform: Transform::from_xyz(0.0, 0.0, 0.002),
+                        ..Default::default()
+                    })
+                    .insert(LifebarOver)
+                    .id();
+            })
+            .insert(this);
+
+        commands
+    }
+
     pub fn set_lifebars(&mut self, life: f32, colors: impl IntoIterator<Item = Color>) {
         self.lifebars = colors.into_iter().map(|color| Lifebar { color }).collect();
-        self.lifebar_index = self.lifebars.len() - 1;
-        self.lifebar_life = life;
-        self.lifebar_remain_life = life;
-        self.lifebar_force_update = true;
+        self.index = self.lifebars.len() - 1;
+        self.life = life;
+        self.remain_life = life;
+        self.force_update = true;
     }
 
-    pub fn set_lifebar_visible(&mut self, visible: bool) {
-        self.lifebars_visible = visible;
+    pub fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
     }
-
-    fn update(&mut self, under: &mut LifebarUnder, over: &mut LifebarOver) {}
 }
+
+#[derive(Component, Default)]
+struct HudManager {}
+
+const LIFEBAR_BOSS_VISIBLE_POS: Vec2 = const_vec2!([0., 1.8]);
+const LIFEBAR_BOSS_HIDDEN_POS: Vec2 = const_vec2!([0., 2.2]);
+
+// impl HudManager {
+//     fn update(&mut self, under: &mut LifebarUnder, over: &mut LifebarOver) {}
+// }
 
 // FIXME
 const SHIP1_SCALE: f32 = 0.3;
@@ -242,12 +347,13 @@ fn game_run(
 
     // DEBUG
 
-    if action_state.just_pressed(&PlayerAction::DebugSpawnBoss) {
-        init_events.send(InitLifebarsEvent {
-            colors: [Color::RED, Color::BLUE].into(),
-            life_per_bar: 10.,
-        })
-    }
+    // if action_state.just_pressed(&PlayerAction::DebugSpawnBoss) {
+    //     init_events.send(InitLifebarsEvent {
+    //         entity:
+    //         colors: [Color::RED, Color::BLUE].into(),
+    //         life_per_bar: 10.,
+    //     })
+    // }
 }
 
 fn bullet_update(
@@ -304,15 +410,6 @@ fn game_setup(
         alpha_mode: AlphaMode::Blend,
         ..Default::default()
     });
-
-    // // TEMP
-    // commands
-    //         .spawn_bundle(PbrBundle {
-    //             mesh: player_controller.bullet_mesh.clone(),
-    //             material: player_controller.bullet_material.clone(),
-    //             transform: Transform::identity(),
-    //             ..Default::default()
-    //         });
 
     // Main camera
     commands
@@ -408,67 +505,63 @@ fn game_setup(
                 });
         });
 
-    // HUD
     let hud_mat_black = materials.add(StandardMaterial {
         base_color: Color::BLACK,
         unlit: true,
         alpha_mode: AlphaMode::Blend,
         ..Default::default()
     });
-    let hud_mat_lifebar_under = materials.add(StandardMaterial {
-        base_color: Color::RED,
-        unlit: true,
-        alpha_mode: AlphaMode::Blend,
-        ..Default::default()
-    });
-    let hud_mat_lifebar_over = materials.add(StandardMaterial {
-        base_color: Color::GREEN,
-        unlit: true,
-        alpha_mode: AlphaMode::Blend,
-        ..Default::default()
-    });
-    let mut hud = HudManager::default();
-    hud.set_lifebars(40.0, [Color::RED, Color::ORANGE, Color::YELLOW]);
-    hud.under_mat = hud_mat_lifebar_under.clone();
-    hud.over_mat = hud_mat_lifebar_over.clone();
-    hud.set_lifebar_visible(true); // TEMP
-    commands
-        .spawn_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Quad {
-                size: Vec2::new(4.01, 0.05),
-                flip: false,
-            })),
-            material: hud_mat_black.clone(),
-            transform: Transform::from_translation(LIFEBAR_HIDDEN_POS),
-            ..Default::default()
-        })
-        .insert(Name::new("HudManager"))
-        .insert(hud)
-        .insert(Animator::<Transform>::default().with_state(AnimatorState::Paused))
-        .with_children(|parent| {
-            parent
-                .spawn_bundle(PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Quad {
-                        size: Vec2::new(4., 0.04),
-                        flip: false,
-                    })),
-                    material: hud_mat_lifebar_under.clone(),
-                    transform: Transform::from_xyz(0.0, 0.0, 0.001),
-                    ..Default::default()
-                })
-                .insert(LifebarUnder);
-            parent
-                .spawn_bundle(PbrBundle {
-                    mesh: meshes.add(Mesh::from(shape::Quad {
-                        size: Vec2::new(4., 0.04),
-                        flip: false,
-                    })),
-                    material: hud_mat_lifebar_over.clone(),
-                    transform: Transform::from_xyz(0.0, 0.0, 0.002),
-                    ..Default::default()
-                })
-                .insert(LifebarOver);
-        });
+
+    // Player lifebars
+    let mut player_lifebars = LifebarHud::default();
+    player_lifebars.direction = LifebarDirection::Vertical;
+    player_lifebars.visible_pos = Vec2::new(-2.5, 0.);
+    player_lifebars.hidden_pos = Vec2::new(-2.5, 0.);
+    player_lifebars.set_lifebars(
+        400.0,
+        [
+            Color::RED,
+            Color::ORANGE,
+            Color::YELLOW,
+            Color::GREEN,
+            Color::CYAN,
+        ],
+    );
+    player_lifebars.set_visible(true);
+    commands = LifebarHud::spawn(
+        player_lifebars,
+        "PlayerLifebar",
+        Vec2::new(-2.5, 0.),
+        Vec2::new(0.05, 3.01),
+        hud_mat_black.clone(),
+        Vec2::new(0.04, 3.),
+        commands,
+        &mut *meshes,
+        &mut *materials,
+    );
+
+    // Boss lifebars
+    let mut boss_lifebars = LifebarHud::default();
+    boss_lifebars.direction = LifebarDirection::Horizontal;
+    boss_lifebars.visible_pos = LIFEBAR_BOSS_VISIBLE_POS;
+    boss_lifebars.hidden_pos = LIFEBAR_BOSS_HIDDEN_POS;
+    boss_lifebars.set_lifebars(40.0, [Color::RED, Color::ORANGE, Color::YELLOW]);
+    boss_lifebars.set_visible(true); // TEMP
+    commands = LifebarHud::spawn(
+        boss_lifebars,
+        "BossLifebar",
+        Vec2::new(0., 1.5),
+        Vec2::new(4.01, 0.05),
+        hud_mat_black.clone(),
+        Vec2::new(4., 0.04),
+        commands,
+        &mut *meshes,
+        &mut *materials,
+    );
+
+    // // HudManager
+    // let mut hud = HudManager::default();
+    // commands.spawn().insert(Name::new("HudManager")).insert(hud);
 }
 
 fn detect_collisions(
@@ -527,73 +620,82 @@ fn detect_collisions(
 }
 
 fn update_hud(
-    mut query: QuerySet<(
-        QueryState<(&mut HudManager, &mut Transform, &mut Animator<Transform>)>,
-        QueryState<(&mut LifebarOver, &mut Transform)>,
-        QueryState<(&mut LifebarUnder, &mut Transform)>,
-    )>,
+    mut query: Query<
+        (&mut LifebarHud, &mut Transform, &mut Animator<Transform>),
+        Without<LifebarOver>,
+    >,
+    mut over_query: Query<(&mut LifebarOver, &mut Transform), Without<LifebarHud>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut damage_events: EventReader<DamageEvent>,
     mut init_events: EventReader<InitLifebarsEvent>,
 ) {
-    // Animate hud
-    let mut under_progress = None;
-    let mut over_progress = None;
-    {
-        let mut q0 = query.q0();
-        let (mut hud, mut transform, mut animator) = q0.single_mut();
-
-        // Check for init event
-        if let Some(mut ev) = init_events.iter().last() {
-            let mut ev = ev.clone();
-            hud.set_lifebars(ev.life_per_bar, ev.colors.into_iter());
-            hud.set_lifebar_visible(true);
+    // Initialize any lifebar HUD if needed
+    for ev in init_events.iter() {
+        if let Ok((mut hud, _, _)) = query.get_mut(ev.entity) {
+            let mut colors = ev.colors.clone();
+            hud.set_lifebars(ev.life_per_bar, colors.into_iter());
+            hud.set_visible(true);
         }
+    }
+    let mut damage = 0.;
+    for ev in damage_events.iter() {
+        // FIXME - Only target entity
+        damage += ev.0;
+    }
 
+    // Update all HUDs
+    for (mut hud, mut transform, mut animator) in query.iter_mut() {
         // Update lifetime bars from damage events
-        let mut damage = 0.;
-        for ev in damage_events.iter() {
-            damage += ev.0;
+        let mut need_color_update = hud.force_update;
+        if hud.force_update {
+            hud.index = hud.lifebars.len().max(1) - 1;
+            hud.remain_life = hud.life;
         }
-        let mut need_color_update = hud.lifebar_force_update;
-        if hud.lifebar_force_update {
-            hud.lifebar_index = hud.lifebars.len().max(1) - 1;
-            hud.lifebar_remain_life = hud.lifebar_life;
-        }
-        hud.lifebar_force_update = false;
+        hud.force_update = false;
         if damage > 0. {
-            hud.lifebar_remain_life -= damage;
-            // println!(
-            //     "damage: {}, lifebar_remain_life: {}",
-            //     damage, hud.lifebar_remain_life
-            // );
-            if hud.lifebar_remain_life <= 0. {
+            hud.remain_life -= damage;
+            println!(
+                "damage: {}, lifebar_remain_life: {}",
+                damage, hud.remain_life
+            );
+            let mut over_progress;
+            if hud.remain_life <= 0. {
                 // Change bars
-                if hud.lifebar_index >= 1 {
-                    hud.lifebar_remain_life = hud.lifebar_life;
-                    hud.lifebar_index -= 1;
-                    over_progress = Some(1.);
+                if hud.index >= 1 {
+                    hud.remain_life = hud.life;
+                    hud.index -= 1;
+                    over_progress = 1.;
                     need_color_update = true;
                 } else {
                     // killed
-                    println!("BOSS KILLED");
-                    over_progress = Some(0.);
-                    hud.lifebars_visible = false;
+                    println!("ENTITY KILLED");
+                    over_progress = 0.;
+                    hud.visible = false;
                 }
             } else {
-                over_progress = Some((hud.lifebar_remain_life / hud.lifebar_life).clamp(0., 1.));
-                // println!(
-                //     "{} / {} = over_progress: {}",
-                //     hud.lifebar_remain_life,
-                //     hud.lifebar_life,
-                //     over_progress.unwrap()
-                // );
+                over_progress = (hud.remain_life / hud.life).clamp(0., 1.);
+                println!(
+                    "{} / {} = over_progress: {}",
+                    hud.remain_life, hud.life, over_progress
+                );
+            }
+
+            // Scale overbar by progress
+            if let Ok((mut over, mut transform)) = over_query.get_mut(hud.overbar) {
+                match hud.direction {
+                    LifebarDirection::Horizontal => {
+                        transform.scale = Vec3::new(over_progress, 1., 1.)
+                    }
+                    LifebarDirection::Vertical => {
+                        transform.scale = Vec3::new(1., over_progress, 1.)
+                    }
+                }
             }
         }
         if need_color_update {
-            let over_color = hud.lifebars[hud.lifebar_index].color;
-            let under_color = if hud.lifebar_index > 0 {
-                hud.lifebars[hud.lifebar_index - 1].color
+            let over_color = hud.lifebars[hud.index].color;
+            let under_color = if hud.index > 0 {
+                hud.lifebars[hud.index - 1].color
             } else {
                 Color::NONE
             };
@@ -606,35 +708,24 @@ fn update_hud(
         }
 
         // Update visible/hidden animation
-        if hud.lifebars_visible != hud.lifebar_was_visible {
-            hud.lifebar_was_visible = hud.lifebars_visible;
+        if hud.visible != hud.was_visible {
+            hud.was_visible = hud.visible;
+            let pos2d = if hud.visible {
+                hud.visible_pos
+            } else {
+                hud.hidden_pos
+            };
             animator.set_tweenable(Tween::new(
                 EaseMethod::Linear,
                 TweeningType::Once,
                 Duration::from_secs_f32(2.5),
                 TransformPositionLens {
                     start: transform.translation,
-                    end: if hud.lifebars_visible {
-                        LIFEBAR_VISIBLE_POS
-                    } else {
-                        LIFEBAR_HIDDEN_POS
-                    },
+                    end: Vec3::new(pos2d.x, pos2d.y, transform.translation.z),
                 },
             ));
             animator.state = AnimatorState::Playing;
         }
-    }
-    // Configure over lifebar
-    if let Some(over_progress) = over_progress {
-        let mut q1 = query.q1();
-        let (mut over, mut transform) = q1.single_mut();
-        transform.scale = Vec3::new(over_progress, 1., 1.);
-    }
-    // Configure under lifebar
-    if let Some(under_progress) = under_progress {
-        let mut q2 = query.q2();
-        let (mut under, mut transform) = q2.single_mut();
-        transform.scale = Vec3::new(under_progress, 1., 1.);
     }
 }
 
