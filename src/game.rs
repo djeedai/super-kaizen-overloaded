@@ -12,6 +12,7 @@ use bevy_atmosphere::*;
 use bevy_tweening::{lens::*, *};
 use heron::prelude::*;
 use leafwing_input_manager::prelude::*;
+use rand::prelude::*;
 use std::time::Duration;
 
 pub struct GamePlugin;
@@ -677,6 +678,44 @@ fn game_setup(
     // // HudManager
     // let mut hud = HudManager::default();
     // commands.spawn().insert(Name::new("HudManager")).insert(hud);
+
+    let clouds_texture = asset_server.load("textures/clouds2.png");
+    let mut rng = rand::thread_rng();
+    for _ in 0..10 {
+        let h = rng.gen::<f32>() * 3. - 1.5;
+        let delay = rng.gen::<f32>() * 2.457;
+        let duration = 0.7 + rng.gen::<f32>() * 1.3;
+        let x = 0.8 + rng.gen::<f32>() * 0.4;
+        let y = 0.8 + rng.gen::<f32>() * 0.4;
+        let s = 0.3 + rng.gen::<f32>() * 1.4;
+        let clouds_tween = Delay::new(Duration::from_secs_f32(delay)).then(Tween::new(
+            EaseMethod::Linear,
+            TweeningType::Loop,
+            Duration::from_secs_f32(duration),
+            TransformPositionLens {
+                end: Vec3::new(-5., h, 0.),
+                start: Vec3::new(5., h, 0.),
+            },
+        ));
+        commands
+            .spawn_bundle(PbrBundle {
+                mesh: meshes.add(Mesh::from(shape::Quad {
+                    size: Vec2::new(2., 0.3),
+                    flip: false,
+                })),
+                material: materials.add(StandardMaterial {
+                    base_color_texture: Some(clouds_texture.clone()),
+                    unlit: true,
+                    alpha_mode: AlphaMode::Blend,
+                    ..Default::default()
+                }),
+                transform: Transform::from_translation(Vec3::X * 10.) // out of screen
+                    .with_scale(Vec3::new(x * s, y * s, 1.)),
+                ..Default::default()
+            })
+            .insert(Name::new("clouds"))
+            .insert(Animator::new(clouds_tween));
+    }
 }
 
 fn detect_collisions(
