@@ -6,6 +6,7 @@ use bevy::{
     math::const_vec2,
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
+    window::WindowId,
 };
 use bevy_atmosphere::*;
 use bevy_tweening::{lens::*, *};
@@ -26,6 +27,10 @@ impl Plugin for GamePlugin {
             .add_plugin(bevy_atmosphere::AtmospherePlugin { dynamic: true })
             .add_plugin(InputManagerPlugin::<PlayerAction>::default())
             .add_system_set_to_stage(
+                CoreStage::PreUpdate,
+                SystemSet::on_update(AppState::InGame).with_system(update_screen_bounds),
+            )
+            .add_system_set_to_stage(
                 CoreStage::Update,
                 SystemSet::on_enter(AppState::InGame).with_system(game_setup),
             )
@@ -33,7 +38,7 @@ impl Plugin for GamePlugin {
                 CoreStage::Update,
                 SystemSet::on_update(AppState::InGame)
                     .with_system(game_run)
-                    .with_system(bullet_update)
+                    .with_system(despawn_bullets_outside_screen)
                     .with_system(detect_collisions)
                     .with_system(update_hud),
             );
@@ -88,8 +93,29 @@ struct ShipController {
     roll: f32,
 }
 
-#[derive(Component)]
-struct MainCamera;
+#[derive(Component, Default)]
+struct MainCamera {
+    screen_bounds: Rect<f32>,
+}
+
+impl MainCamera {
+    pub fn update_screen_bounds(
+        &mut self,
+        projection: &PerspectiveProjection,
+        transform: &Transform,
+    ) {
+        let camera_half_height = (projection.fov * transform.translation.z * 0.5).abs();
+        let camera_half_width = (camera_half_height * projection.aspect_ratio).abs();
+        self.screen_bounds.left = -camera_half_width;
+        self.screen_bounds.right = camera_half_width;
+        self.screen_bounds.bottom = -camera_half_height;
+        self.screen_bounds.top = camera_half_height;
+        println!(
+            "Screen bounds changed: cw/2={} ch/2={} bounds={:?}",
+            camera_half_width, camera_half_height, self.screen_bounds
+        );
+    }
+}
 
 /// Event to damage a player or enemy.
 #[derive(Debug)]
@@ -385,11 +411,32 @@ fn game_run(
     // }
 }
 
-fn bullet_update(
+/// Calculate screen bounds based on camera projection.
+fn update_screen_bounds(
+    mut query: Query<(
+        &mut MainCamera,
+        ChangeTrackers<PerspectiveProjection>,
+        &PerspectiveProjection,
+        ChangeTrackers<Transform>,
+        &Transform,
+    )>,
+) {
+    let (
+        mut main_camera,
+        camera_projection_tracker,
+        camera_projection,
+        camera_transform_tracker,
+        camera_transform,
+    ) = query.single_mut();
+    if camera_projection_tracker.is_changed() || camera_transform_tracker.is_changed() {
+        main_camera.update_screen_bounds(camera_projection, camera_transform);
+    }
+}
+
+fn despawn_bullets_outside_screen(
     mut commands: Commands,
     mut query: Query<(Entity, &mut Transform, &Bullet), Without<MainCamera>>,
     q_camera: Query<(&PerspectiveProjection, &Transform), With<MainCamera>>,
-    time: Res<Time>,
 ) {
     // Calculate screen bounds based on camera
     let (camera_projection, camera_transform) = q_camera.single();
@@ -404,11 +451,7 @@ fn bullet_update(
     //     camera_half_width, camera_half_height
     // );
 
-    let dt = time.delta_seconds();
     for (entity, mut transform, bullet) in query.iter_mut() {
-        //transform.translation += bullet.0 * dt;
-
-        // Kill bullets outside of screen bounds
         if transform.translation.x.abs() > camera_half_width
             || transform.translation.y.abs() > camera_half_height
         {
@@ -420,6 +463,7 @@ fn bullet_update(
 fn game_setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    windows: Res<Windows>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut init_events: EventWriter<InitLifebarsEvent>,
@@ -443,12 +487,23 @@ fn game_setup(
     });
 
     // Main camera
-    commands
-        .spawn_bundle(PerspectiveCameraBundle {
-            transform: Transform::from_xyz(0.0, 0.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-            ..Default::default()
-        })
-        .insert(MainCamera);
+    let camera_depth = 5.0;
+    let mut camera_bundle = PerspectiveCameraBundle {
+        transform: Transform::from_xyz(0.0, 0.0, camera_depth).looking_at(Vec3::ZERO, Vec3::Y),
+        ..Default::default()
+    };
+    // FIXME - aspect ratio will be fixed-up later based on window size, but we need it now
+    let window = windows.get(WindowId::primary()).unwrap();
+    let aspect_ratio = window.width() / window.height();
+    camera_bundle.perspective_projection.aspect_ratio = aspect_ratio;
+    let mut main_camera = MainCamera::default();
+    main_camera.update_screen_bounds(
+        &camera_bundle.perspective_projection,
+        &camera_bundle.transform,
+    );
+    let screen_bounds = main_camera.screen_bounds;
+    println!("Initial screen bounds: {:?}", screen_bounds);
+    commands.spawn_bundle(camera_bundle).insert(main_camera);
 
     // Debug camera for Heron/Rapier 2D collision shapes
     // FIXME - doesn't work
@@ -543,11 +598,27 @@ fn game_setup(
         ..Default::default()
     });
 
+    // let z_hud = 1.;
+    // let perspective_correction = camera_depth / (camera_depth - z_hud);
+    // let screen_to_world = (screen_bounds.bottom - screen_bounds.top).abs()
+    //     / window.physical_height().max(1) as f32
+    //     * perspective_correction;
+    // let lifebar_margin = 64. * screen_to_world;
+    // println!(
+    //     "w={} h={} screen_to_world={} lifebar_margin={}",
+    //     window.physical_width(),
+    //     window.physical_height(),
+    //     screen_to_world,
+    //     lifebar_margin
+    // );
+    let lifebar_margin_v = 0.4;
+    let lifebar_margin_h = lifebar_margin_v * aspect_ratio;
+
     // Player lifebars
     let mut player_lifebars = LifebarHud::default();
     player_lifebars.orientation = LifebarOrientation::Vertical;
-    player_lifebars.hidden_pos = Vec2::new(-3.5, 0.);
-    player_lifebars.visible_pos = Vec2::new(-2.5, 0.);
+    player_lifebars.visible_pos = Vec2::new(screen_bounds.left + lifebar_margin_h, 0.);
+    player_lifebars.hidden_pos = Vec2::new(screen_bounds.left - lifebar_margin_h, 0.);
     player_lifebars.set_lifebars(
         400.0,
         [
@@ -589,8 +660,8 @@ fn game_setup(
     // Boss lifebars
     let mut boss_lifebars = LifebarHud::default();
     boss_lifebars.orientation = LifebarOrientation::Horizontal;
-    boss_lifebars.visible_pos = LIFEBAR_BOSS_VISIBLE_POS;
-    boss_lifebars.hidden_pos = LIFEBAR_BOSS_HIDDEN_POS;
+    boss_lifebars.visible_pos = Vec2::new(0., screen_bounds.top + lifebar_margin_v);
+    boss_lifebars.hidden_pos = Vec2::new(0., screen_bounds.top - lifebar_margin_v);
     boss_lifebars.set_lifebars(40.0, [Color::RED, Color::ORANGE, Color::YELLOW]);
     LifebarHud::spawn(
         boss_lifebars,
@@ -690,6 +761,7 @@ fn update_hud(
             hud.set_lifebars(ev.life_per_bar, colors.into_iter());
         }
     }
+
     // Show any lifebar HUD if needed
     for ev in show_events.iter() {
         if let Ok((mut hud, mut transform, mut animator)) = hud_query.get_mut(ev.entity) {
