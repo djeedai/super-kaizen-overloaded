@@ -9,6 +9,10 @@ use bevy::{
     window::WindowId,
 };
 use bevy_atmosphere::*;
+use bevy_kira_audio::{
+    Audio as KiraAudio, AudioChannel as KiraAudioChannel, AudioPlugin as KiraAudioPlugin,
+    AudioSource as KiraAudioSource,
+};
 use bevy_tweening::{lens::*, *};
 use heron::prelude::*;
 use leafwing_input_manager::prelude::*;
@@ -25,6 +29,7 @@ impl Plugin for GamePlugin {
             .add_event::<DamageEvent>()
             .add_event::<InitLifebarsEvent>()
             .add_event::<ShowLifebarsEvent>()
+            .init_resource::<AudioRes>()
             .add_plugin(bevy_atmosphere::AtmospherePlugin { dynamic: true })
             .add_plugin(InputManagerPlugin::<PlayerAction>::default())
             .add_system_set_to_stage(
@@ -461,10 +466,18 @@ fn despawn_bullets_outside_screen(
     }
 }
 
+#[derive(Default)]
+struct AudioRes {
+    sfx_channel: KiraAudioChannel,
+    sound_hit: Handle<KiraAudioSource>,
+}
+
 fn game_setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    audio: Res<KiraAudio>,
     windows: Res<Windows>,
+    mut audio_res: ResMut<AudioRes>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut init_events: EventWriter<InitLifebarsEvent>,
@@ -473,6 +486,10 @@ fn game_setup(
     println!("game_setup");
 
     let ship_mesh: Handle<Scene> = asset_server.load("ship1.glb#Scene0");
+
+    audio_res.sfx_channel = KiraAudioChannel::new("sfx".to_string());
+    audio.set_volume_in_channel(0.5, &audio_res.sfx_channel);
+    audio_res.sound_hit = asset_server.load("sounds/hit.ogg");
 
     let bullet_texture = asset_server.load("textures/bullet1.png");
     //let bullet_texture = asset_server.load("textures/dev_uv.png");
@@ -722,6 +739,8 @@ fn detect_collisions(
     mut commands: Commands,
     mut collision_events: EventReader<CollisionEvent>,
     mut damage_events: EventWriter<DamageEvent>,
+    audio: Res<KiraAudio>,
+    audio_res: Res<AudioRes>,
 ) {
     for event in collision_events.iter() {
         match event {
@@ -743,9 +762,11 @@ fn detect_collisions(
                 // Damage enemy
                 if data1.collision_layers().contains_group(Layer::Enemy) {
                     damage_events.send(DamageEvent(1.));
+                    audio.play_in_channel(audio_res.sound_hit.clone(), &audio_res.sfx_channel);
                 }
                 if data2.collision_layers().contains_group(Layer::Enemy) {
                     damage_events.send(DamageEvent(1.));
+                    audio.play_in_channel(audio_res.sound_hit.clone(), &audio_res.sfx_channel);
                 }
 
                 // Despawn bullet
@@ -786,6 +807,9 @@ fn update_hud(
     mut damage_events: EventReader<DamageEvent>,
     mut init_events: EventReader<InitLifebarsEvent>,
     mut show_events: EventReader<ShowLifebarsEvent>,
+    //
+    //asset_server: Res<AssetServer>,
+    //audio: Res<KiraAudio>,
 ) {
     // Initialize any lifebar HUD if needed
     for ev in init_events.iter() {
@@ -927,6 +951,12 @@ fn update_hud(
                         } else {
                             // killed
                             println!("ENTITY KILLED");
+                            // {
+                            //     let sound_channel_sfx = KiraAudioChannel::new("sfx".to_string());
+                            //     audio.set_volume_in_channel(0.7, &sound_channel_sfx);
+                            //     let sound_click = asset_server.load("sounds/explosion.ogg");
+                            //     audio.play_in_channel(sound_click.clone(), &sound_channel_sfx);
+                            // }
                             over_progress = 0.;
                             hud.fill_seq = LifebarFillSeqPhase::SlideOut;
                             animator.set_tweenable(Tween::new(
