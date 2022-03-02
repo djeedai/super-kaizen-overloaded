@@ -17,7 +17,7 @@ use bevy_tweening::{lens::*, *};
 use heron::prelude::*;
 use leafwing_input_manager::prelude::*;
 use rand::prelude::*;
-use std::time::Duration;
+use std::{f32::consts::PI, time::Duration};
 
 pub struct GamePlugin;
 
@@ -47,8 +47,28 @@ impl Plugin for GamePlugin {
                     .with_system(update_player)
                     .with_system(despawn_bullets_outside_screen)
                     .with_system(detect_collisions)
+                    .with_system(update_sky_from_sun)
                     .with_system(update_hud),
             );
+    }
+}
+
+#[derive(Component)]
+struct Sun;
+
+fn update_sky_from_sun(
+    mut sky_mat: ResMut<AtmosphereMat>,
+    mut query: Query<(&mut Transform, &mut DirectionalLight), With<Sun>>,
+    time: Res<Time>,
+) {
+    if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
+        // TODO - Control that better to not fall into night
+        light_trans.rotation = Quat::from_rotation_x(-PI + PI * time.seconds_since_startup() as f32 / 60.);
+
+        // Update sky from sun direction
+        let pos = light_trans.rotation.mul_vec3(Vec3::Z);
+        sky_mat.sun_position = pos;
+        //directional.illuminance = t.sin().max(0.0).powf(2.0) * 100000.0;
     }
 }
 
@@ -350,13 +370,6 @@ impl LifebarHud {
 #[derive(Component, Default)]
 struct HudManager {}
 
-const LIFEBAR_BOSS_VISIBLE_POS: Vec2 = const_vec2!([0., 1.8]);
-const LIFEBAR_BOSS_HIDDEN_POS: Vec2 = const_vec2!([0., 1.65]); //const_vec2!([0., 2.2]);
-
-// impl HudManager {
-//     fn update(&mut self, under: &mut LifebarUnder, over: &mut LifebarOver) {}
-// }
-
 // FIXME
 const SHIP1_SCALE: f32 = 0.3;
 
@@ -588,16 +601,17 @@ fn game_setup(
 
     // light
     commands
-        .spawn_bundle(PointLightBundle {
-            point_light: PointLight {
-                intensity: 1500.0,
+        .spawn_bundle(DirectionalLightBundle {
+            directional_light: DirectionalLight {
+                color: Color::WHITE,
+                illuminance: 8000.0,
                 shadows_enabled: true,
                 ..Default::default()
             },
-            transform: Transform::from_xyz(2.0, 4.0, 2.0),
             ..Default::default()
         })
-        .insert(Name::new("PointLight"));
+        .insert(Name::new("Sun"))
+        .insert(Sun);
 
     //let font = asset_server.load("fonts/FiraMono-Regular.ttf");
 
