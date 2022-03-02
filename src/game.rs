@@ -179,12 +179,12 @@ impl MainCamera {
 /// Event to damage a player or enemy.
 #[derive(Debug)]
 pub struct DamageEvent {
-    entity: Entity,
-    damage: f32,
+    pub entity: Entity,
+    pub damage: f32,
 }
 
-struct Lifebar {
-    color: Color,
+pub struct Lifebar {
+    pub color: Color,
 }
 
 #[derive(Component)]
@@ -194,7 +194,7 @@ struct LifebarUnder;
 struct LifebarOver;
 
 #[derive(Debug, Clone)]
-struct InitLifebarsEvent {
+pub struct InitLifebarsEvent {
     /// Entity holding the LifebarHud component of the lifebars to update.
     entity: Entity,
     /// Colors of all lifebars, from undermost (closer to zero life) to topmost (first one to take damages).
@@ -204,27 +204,27 @@ struct InitLifebarsEvent {
 }
 
 #[derive(Debug, Clone)]
-struct ShowLifebarsEvent {
+pub struct ShowLifebarsEvent {
     /// Entity holding the LifebarHud component of the lifebars to update.
     entity: Entity,
 }
 
 #[derive(Debug, Clone)]
-struct UpdateLifebarsEvent {
+pub struct UpdateLifebarsEvent {
     /// Entity holding the LifebarHud component to update.
-    entity: Entity,
+    pub entity: Entity,
     /// New value for the remaining life to apply to the lifebar.
-    remain_life: f32,
+    pub remain_life: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LifebarOrientation {
+pub enum LifebarOrientation {
     Horizontal,
     Vertical,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LifebarFillSeqPhase {
+pub enum LifebarFillSeqPhase {
     /// Off-screen, waiting.
     Idle,
     /// Slide inside screen from hidden to visible position.
@@ -238,28 +238,28 @@ enum LifebarFillSeqPhase {
 }
 
 #[derive(Component)]
-struct LifebarHud {
+pub struct LifebarHud {
     ///
-    orientation: LifebarOrientation,
-    visible_pos: Vec2,
-    hidden_pos: Vec2,
+    pub orientation: LifebarOrientation,
+    pub visible_pos: Vec2,
+    pub hidden_pos: Vec2,
     /// Descriptions of all lifebars.
-    lifebars: Vec<Lifebar>,
+    pub lifebars: Vec<Lifebar>,
     /// Index of current lifebar.
-    index: usize,
+    pub index: usize,
     /// Total life per lifebar.
-    life: f32,
+    pub life: f32,
     /// Remaining life in current lifebar.
-    remain_life: f32,
+    pub remain_life: f32,
     /// Force an update of the lifebar state (including colors).
-    force_update: bool,
+    pub force_update: bool,
     /// Material for the next lifebar under the current one, if any.
-    under_mat: Handle<StandardMaterial>,
+    pub under_mat: Handle<StandardMaterial>,
     /// Material for the current lifebar.
-    over_mat: Handle<StandardMaterial>,
-    underbar_entity: Entity,
-    overbar_entity: Entity,
-    fill_seq: LifebarFillSeqPhase,
+    pub over_mat: Handle<StandardMaterial>,
+    pub underbar_entity: Entity,
+    pub overbar_entity: Entity,
+    pub fill_seq: LifebarFillSeqPhase,
 }
 
 impl Default for LifebarHud {
@@ -615,6 +615,7 @@ fn game_setup(
 
     //let font = asset_server.load("fonts/FiraMono-Regular.ttf");
 
+    // FIXME - Copied in enemy.rs :(
     let hud_mat_black = materials.add(StandardMaterial {
         base_color: Color::BLACK,
         unlit: true,
@@ -682,23 +683,6 @@ fn game_setup(
     show_events.send(ShowLifebarsEvent {
         entity: player_lifebars_entity,
     });
-
-    // Boss lifebars
-    let mut boss_lifebars = LifebarHud::default();
-    boss_lifebars.orientation = LifebarOrientation::Horizontal;
-    boss_lifebars.visible_pos = Vec2::new(0., screen_bounds.top + lifebar_margin_v);
-    boss_lifebars.hidden_pos = Vec2::new(0., screen_bounds.top - lifebar_margin_v);
-    boss_lifebars.set_lifebars(40.0, [Color::RED, Color::ORANGE, Color::YELLOW]);
-    LifebarHud::spawn(
-        boss_lifebars,
-        "BossLifebar",
-        Vec2::new(4.01, 0.05),
-        hud_mat_black.clone(),
-        Vec2::new(4., 0.04),
-        &mut commands,
-        &mut *meshes,
-        &mut *materials,
-    );
 
     let bullet_texture = asset_server.load("textures/bullet1.png");
     //let bullet_texture = asset_server.load("textures/dev_uv.png");
@@ -967,19 +951,6 @@ fn update_hud(
         {
             // Transition fill sequence if needed
             if animator.progress() >= 1. || over_animator.progress() >= 1. {
-                if animator.progress() >= 1. {
-                    println!(
-                        "Animator finished! old_state={:?} (HUD @ {}x{})",
-                        hud.fill_seq, transform.translation.x, transform.translation.y
-                    );
-                }
-                if over_animator.progress() >= 1. {
-                    println!(
-                        "OverAnimator finished! (HUD @ {}x{})",
-                        transform.translation.x, transform.translation.y
-                    );
-                }
-
                 // TODO - auto-stop on completed
                 animator.stop();
                 over_animator.stop();
