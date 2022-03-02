@@ -71,14 +71,14 @@ impl EnemyManager {
     }
 }
 
-struct FireTagContext<'w, 's> {
+struct FireTagContext<'w, 's, 'ctx> {
     dt: f32,
     origin: Vec3,
-    commands: Commands<'w, 's>,
+    commands: &'ctx mut Commands<'w, 's>,
 }
 
-impl<'w, 's> FireTagContext<'w, 's> {
-    fn new(dt: f32, origin: Vec3, commands: Commands<'w, 's>) -> Self {
+impl<'w, 's, 'ctx> FireTagContext<'w, 's, 'ctx> {
+    fn new(dt: f32, origin: Vec3, commands: &'ctx mut Commands<'w, 's>) -> Self {
         FireTagContext {
             dt,
             origin,
@@ -302,6 +302,8 @@ struct EnemyController {
     motion_pattern: Option<Box<dyn MotionPattern + Send + Sync>>,
     fire_tag: Option<Box<dyn FireTag + Send + Sync>>,
     fire_tag_started: bool,
+    life: f32,
+    remain_life: f32,
 }
 
 impl Default for EnemyController {
@@ -310,19 +312,21 @@ impl Default for EnemyController {
             motion_pattern: None,
             fire_tag: None,
             fire_tag_started: false,
+            life: 0.,
+            remain_life: 0.,
         }
     }
 }
 
 impl EnemyController {
-    fn update<'w, 's>(
+    fn update(
         &mut self,
         dt: f32,
         origin: Vec3,
-        mut commands: Commands<'w, 's>,
+        commands: &mut Commands,
         transform: &mut Transform,
         animator: &mut Animator<Transform>,
-    ) -> Commands<'w, 's> {
+    ) {
         // Move
         if let Some(motion_pattern) = &mut self.motion_pattern {
             if motion_pattern.do_motion(dt, transform, animator) == MotionResult::StartFireTag {
@@ -337,10 +341,7 @@ impl EnemyController {
             if let Some(fire_tag) = &mut self.fire_tag {
                 fire_tag.execute(&mut context);
             }
-            commands = context.commands;
         }
-
-        commands
     }
 }
 
@@ -385,10 +386,10 @@ fn enemy_update(
     //println!("enemy_update() t={}", time.seconds_since_startup());
     for (mut enemy, mut transform, mut animator) in query.iter_mut() {
         //println!("enemy xform={:?}", transform);
-        commands = enemy.update(
+        enemy.update(
             time.delta_seconds(),
             transform.translation,
-            commands,
+            &mut commands,
             &mut *transform,
             &mut *animator,
         );
