@@ -72,23 +72,17 @@ fn menu_run(
     mut exit: EventWriter<AppExit>,
     audio: Res<KiraAudio>,
     mut app_state: ResMut<State<AppState>>,
-    //mut event_reader: EventReader<TweenCompleted>,
 ) {
     let (mut menu, action_state) = q_menu.single_mut();
     let prev_sel = menu.selected_index;
     if action_state.just_pressed(&MenuAction::SelectNext) {
-        menu.selected_index = (menu.selected_index + 1).min(2);
+        menu.selected_index = (menu.selected_index + 1).min(1);
         audio.play_in_channel(menu.sound_click.clone(), &menu.sound_channel_sfx);
-        //println!("NEXT");
     }
     if action_state.just_pressed(&MenuAction::SelectPrev) {
         menu.selected_index = (menu.selected_index - 1).max(0);
         audio.play_in_channel(menu.sound_click.clone(), &menu.sound_channel_sfx);
-        //println!("PREV");
     }
-
-    //if event_reader.iter().any(|ev| ev.user_data == 0) {
-    //}
 
     if prev_sel != menu.selected_index {
         for (button, mut animator) in q_animators.iter_mut() {
@@ -123,8 +117,7 @@ fn menu_run(
     if action_state.just_pressed(&MenuAction::ClickButton) {
         match menu.selected_index {
             0 => app_state.set(AppState::InGame).unwrap(),
-            1 => {}
-            2 => exit.send(AppExit),
+            1 => exit.send(AppExit),
             _ => unreachable!(),
         }
     }
@@ -144,8 +137,10 @@ fn menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     let mut input_map = InputMap::default();
     input_map.insert(MenuAction::SelectNext, KeyCode::Down);
+    input_map.insert(MenuAction::SelectNext, KeyCode::S);
     input_map.insert(MenuAction::SelectNext, GamepadButtonType::DPadDown);
     input_map.insert(MenuAction::SelectPrev, KeyCode::Up);
+    input_map.insert(MenuAction::SelectPrev, KeyCode::W);
     input_map.insert(MenuAction::SelectPrev, GamepadButtonType::DPadUp);
     input_map.insert(MenuAction::ClickButton, KeyCode::Return);
     input_map.insert(MenuAction::ClickButton, KeyCode::Space);
@@ -203,7 +198,7 @@ fn menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     const DELAY_MS: u64 = 200;
 
     let mut start_time_ms = 0;
-    for (index, text) in ["New Game", "Settings", "Quit"].iter().enumerate() {
+    for (index, text) in ["New Game", "Quit"].iter().enumerate() {
         let delay = Delay::new(Duration::from_millis(start_time_ms));
         start_time_ms += DELAY_MS;
         let tween_scale = Tween::new(
