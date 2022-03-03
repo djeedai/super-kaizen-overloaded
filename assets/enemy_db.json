@@ -16,5 +16,67 @@
             "motion_pattern_kind": "enter_stay",
             "bullet_kind": "pink_donut"
         }
+    ],
+    "timeline": [
+        {
+            "time": 0.0,
+            "enemy": "fly_by",
+            "start_pos": [5.0, 1.0, 0.0]
+        },
+        {
+            "time": 3.0,
+            "enemy": "fly_by",
+            "start_pos": [5.0, -1.0, 0.0]
+        },
+        {
+            "time": 4.0,
+            "enemy": "fly_by",
+            "start_pos": [5.0, 1.0, 0.0]
+        },
+        {
+            "time": 6.0,
+            "enemy": "6_arm_spiral",
+            "start_pos": [5.0, 1.0, 0.0]
+        },
+        {
+            "time": 6.0,
+            "enemy": "fly_by",
+            "start_pos": [5.0, 1.0, 0.0]
+        },
+        {
+            "time": 6.0,
+            "enemy": "fly_by",
+            "start_pos": [5.0, -1.0, 0.0]
+        },
+        {
+            "time": 7.0,
+            "enemy": "fly_by",
+            "start_pos": [5.0, 1.0, 0.0]
+        },
+        {
+            "time": 7.0,
+            "enemy": "fly_by",
+            "start_pos": [5.0, -1.0, 0.0]
+        },
+        {
+            "time": 7.5,
+            "enemy": "fly_by",
+            "start_pos": [5.0, 1.3, 0.0]
+        },
+        {
+            "time": 7.5,
+            "enemy": "fly_by",
+            "start_pos": [5.0, -1.3, 0.0]
+        },
+        {
+            "time": 8.0,
+            "enemy": "fly_by",
+            "start_pos": [5.0, 1.6, 0.0]
+        },
+        {
+            "time": 8.0,
+            "enemy": "fly_by",
+            "start_pos": [5.0, -1.6, 0.0]
+        }
     ]
 }

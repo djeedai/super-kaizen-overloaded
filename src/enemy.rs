@@ -78,8 +78,23 @@ struct EnemyDescriptor {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct TimelineEvent {
+    time: f64,
+    enemy: String,
+    start_pos: Vec3,
+}
+
+#[derive(Default)]
+struct Timeline {
+    events: Vec<TimelineEvent>,
+    index: usize,
+    time: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct EnemyDatabase {
     enemies: Vec<EnemyDescriptor>,
+    timeline: Vec<TimelineEvent>,
 }
 
 struct BulletAssets {
@@ -93,6 +108,7 @@ struct EnemyManager {
     boss_lifebar_entity: Entity,
     descriptors: HashMap<String, EnemyDescriptor>,
     bullet_assets: HashMap<BulletKind, BulletAssets>,
+    timeline: Timeline,
 }
 
 impl Default for EnemyManager {
@@ -103,6 +119,7 @@ impl Default for EnemyManager {
             boss_lifebar_entity: Entity::from_raw(0),
             descriptors: HashMap::default(),
             bullet_assets: HashMap::default(),
+            timeline: Timeline::default(),
         }
     }
 }
@@ -110,6 +127,19 @@ impl Default for EnemyManager {
 impl EnemyManager {
     fn add_descriptor(&mut self, descriptor: EnemyDescriptor) {
         self.descriptors.insert(descriptor.name.clone(), descriptor);
+    }
+
+    fn execute_timeline(&mut self, dt: f32, commands: &mut Commands) {
+        self.timeline.time += dt as f64;
+        for index in self.timeline.index..self.timeline.events.len() {
+            let ev = &self.timeline.events[index];
+            if ev.time > self.timeline.time {
+                self.timeline.index = index;
+                return;
+            }
+            self.spawn(commands, &ev.enemy, ev.start_pos);
+        }
+        self.timeline.index = self.timeline.events.len(); // timeline done
     }
 
     fn spawn(&self, commands: &mut Commands, desc: &str, position: Vec3) {
@@ -574,26 +604,32 @@ fn setup_enemy(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    manager.bullet_assets.insert(BulletKind::PinkDonut, BulletAssets {
-        mesh: meshes.add(Mesh::from(Quad { size: 0.1 })),
-        material: materials.add(StandardMaterial {
-            base_color_texture: Some(asset_server.load("textures/bullet2.png")),
-            //emissive: Color::RED,
-            unlit: true,
-            alpha_mode: AlphaMode::Blend,
-            ..Default::default()
-        })
-    });
-    manager.bullet_assets.insert(BulletKind::WhiteBall, BulletAssets {
-        mesh: meshes.add(Mesh::from(Quad { size: 0.08 })),
-        material: materials.add(StandardMaterial {
-            base_color_texture: Some(asset_server.load("textures/bullet3.png")),
-            //emissive: Color::WHITE,
-            unlit: true,
-            alpha_mode: AlphaMode::Blend,
-            ..Default::default()
-        })
-    });
+    manager.bullet_assets.insert(
+        BulletKind::PinkDonut,
+        BulletAssets {
+            mesh: meshes.add(Mesh::from(Quad { size: 0.1 })),
+            material: materials.add(StandardMaterial {
+                base_color_texture: Some(asset_server.load("textures/bullet2.png")),
+                //emissive: Color::RED,
+                unlit: true,
+                alpha_mode: AlphaMode::Blend,
+                ..Default::default()
+            }),
+        },
+    );
+    manager.bullet_assets.insert(
+        BulletKind::WhiteBall,
+        BulletAssets {
+            mesh: meshes.add(Mesh::from(Quad { size: 0.08 })),
+            material: materials.add(StandardMaterial {
+                base_color_texture: Some(asset_server.load("textures/bullet3.png")),
+                //emissive: Color::WHITE,
+                unlit: true,
+                alpha_mode: AlphaMode::Blend,
+                ..Default::default()
+            }),
+        },
+    );
 
     // FIXME - Copied from game.rs :(
     let hud_mat_black = materials.add(StandardMaterial {
@@ -632,10 +668,12 @@ fn setup_enemy(
         manager.add_descriptor(descriptor);
     }
 
+    manager.timeline.events = database.timeline;
+
     // TEMP
-    manager.spawn(&mut commands, "fly_by", Vec3::new(5., 0.8, 0.));
-    manager.spawn(&mut commands, "fly_by", Vec3::new(5., -0.8, 0.));
-    manager.spawn(&mut commands, "6_arm_spiral", Vec3::new(3.5, 0., 0.));
+    // manager.spawn(&mut commands, "fly_by", Vec3::new(5., 0.8, 0.));
+    // manager.spawn(&mut commands, "fly_by", Vec3::new(5., -0.8, 0.));
+    // manager.spawn(&mut commands, "6_arm_spiral", Vec3::new(3.5, 0., 0.));
 }
 
 fn update_enemy(
@@ -651,13 +689,20 @@ fn update_enemy(
     >,
     q_player: Query<&Transform, With<PlayerController>>,
     time: Res<Time>,
-    manager: Res<EnemyManager>,
+    mut manager: ResMut<EnemyManager>,
     mut damage_events: EventReader<DamageEvent>,
     mut lifebar_events: EventWriter<UpdateLifebarsEvent>,
 ) {
     //println!("update_enemy() t={}", time.seconds_since_startup());
+
+    let dt = time.delta_seconds();
+
+    // Execute timeline
+    manager.execute_timeline(dt, &mut commands);
+
     // need to loop once per enemy, so collect all now
     let damage_events = damage_events.iter().collect::<Vec<_>>();
+
     for (entity, mut controller, mut transform, mut animator) in query.iter_mut() {
         // Apply damage to enemy
         let damage: f32 = damage_events
@@ -685,7 +730,7 @@ fn update_enemy(
 
         //println!("enemy xform={:?}", transform);
         controller.update(
-            time.delta_seconds(),
+            dt,
             transform.translation,
             q_player.single().translation,
             &mut commands,
