@@ -15,7 +15,7 @@ impl Plugin for DebugPlugin {
 struct FpsCounter(pub f64);
 
 fn fps_counter_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    //commands.spawn_bundle(UiCameraBundle::default());
+    commands.spawn_bundle(UiCameraBundle::default());
 
     commands
         .spawn_bundle(NodeBundle {
