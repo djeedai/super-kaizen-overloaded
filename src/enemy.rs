@@ -38,10 +38,10 @@ struct EnemyManager {
 }
 
 impl EnemyManager {
-    fn spawn(&self, mut commands: Commands, position: Vec3) {
+    fn spawn(&self, commands: &mut Commands, position: Vec3) {
         println!("SPAWN ENEMY @ {:?}", position);
         let mut motion_pattern = EnterStayMotion::default();
-        motion_pattern.enter_height = 0.8;
+        motion_pattern.enter_height = position.y;
         let mut fire_tag = FireTagSpiral::default();
         fire_tag.bullet_mesh = self.bullet_mesh.clone();
         fire_tag.bullet_material = self.bullet_material.clone();
@@ -367,7 +367,9 @@ fn enemy_setup(
     manager.bullet_material = bullet_material;
 
     // TEMP
-    manager.spawn(commands, Vec3::new(3., 0., 0.));
+    manager.spawn(&mut commands, Vec3::new(3., 0.8, 0.));
+    manager.spawn(&mut commands, Vec3::new(3.5, 0., 0.));
+    manager.spawn(&mut commands, Vec3::new(3., -0.8, 0.));
 }
 
 fn enemy_update(
