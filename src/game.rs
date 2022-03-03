@@ -1,6 +1,6 @@
 use bevy::{
     app::CoreStage,
-    asset::AssetStage,
+    asset::{AssetStage, LoadState},
     gltf::{Gltf, GltfMesh},
     input::gamepad::GamepadButtonType,
     math::const_vec2,
@@ -11,7 +11,7 @@ use bevy::{
 use bevy_atmosphere::*;
 use bevy_kira_audio::{
     Audio as KiraAudio, AudioChannel as KiraAudioChannel, AudioPlugin as KiraAudioPlugin,
-    AudioSource as KiraAudioSource,
+    AudioSource as KiraAudioSource, PlaybackState,
 };
 use bevy_tweening::{lens::*, *};
 use heron::prelude::*;
@@ -21,7 +21,7 @@ use std::{f32::consts::PI, time::Duration};
 
 pub struct GamePlugin;
 
-use crate::{AppState, Layer};
+use crate::{menu::AudioManager, AppState, Layer};
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
@@ -48,7 +48,8 @@ impl Plugin for GamePlugin {
                     .with_system(despawn_bullets_outside_screen)
                     .with_system(detect_collisions)
                     .with_system(update_sky_from_sun)
-                    .with_system(update_hud),
+                    .with_system(update_hud)
+                    .with_system(play_background_audio),
             );
     }
 }
@@ -63,7 +64,8 @@ fn update_sky_from_sun(
 ) {
     if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
         // TODO - Control that better to not fall into night
-        light_trans.rotation = Quat::from_rotation_x(-PI + PI * time.seconds_since_startup() as f32 / 60.);
+        light_trans.rotation =
+            Quat::from_rotation_x(-PI + PI * time.seconds_since_startup() as f32 / 60.);
 
         // Update sky from sun direction
         let pos = light_trans.rotation.mul_vec3(Vec3::Z);
@@ -1113,4 +1115,35 @@ impl From<Quad> for Mesh {
         mesh.set_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
         mesh
     }
+}
+
+fn play_background_audio(
+    asset_server: Res<AssetServer>,
+    audio: Res<KiraAudio>,
+    mut audio_manager: ResMut<AudioManager>,
+) {
+    //if config.sound.enabled {
+
+    if audio_manager.game_instance.is_none() {
+        let game_load_state = asset_server.get_load_state(&audio_manager.game_bgm);
+        //println!("Game bgm load state: {:?}", game_load_state);
+        if game_load_state == LoadState::Loaded {
+            // Transition
+
+            // Unfortunately cannot un-loop the menu bgm and let it finish 1 iteration before switching,
+            // so change immediately.
+            if let Some(menu_instance) = &audio_manager.menu_instance {
+                if let PlaybackState::Playing { position } = audio.state(menu_instance.clone()) {
+                    audio.stop();
+                    audio_manager.menu_instance = None;
+                }
+            }
+
+            println!("Playing game bgm...");
+            audio.set_volume(1.); //config.sound.volume);
+            audio_manager.game_instance = Some(audio.play_looped(audio_manager.game_bgm.clone()));
+        }
+    }
+
+    //}
 }

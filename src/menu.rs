@@ -6,7 +6,7 @@ use bevy::{
 };
 use bevy_kira_audio::{
     Audio as KiraAudio, AudioChannel as KiraAudioChannel, AudioPlugin as KiraAudioPlugin,
-    AudioSource as KiraAudioSource,
+    AudioSource as KiraAudioSource, InstanceHandle,
 };
 use bevy_tweening::{lens::*, *};
 use leafwing_input_manager::prelude::*;
@@ -20,6 +20,7 @@ impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(InputManagerPlugin::<MenuAction>::default())
             .add_plugin(KiraAudioPlugin)
+            .init_resource::<AudioManager>()
             .add_system_set(
                 SystemSet::on_enter(AppState::Menu)
                     .with_system(menu_setup)
@@ -46,6 +47,24 @@ struct Menu {
 
 #[derive(Component, Default)]
 struct Button(pub i32);
+
+pub struct AudioManager {
+    pub menu_bgm: Handle<KiraAudioSource>,
+    pub menu_instance: Option<InstanceHandle>,
+    pub game_bgm: Handle<KiraAudioSource>,
+    pub game_instance: Option<InstanceHandle>,
+}
+
+impl Default for AudioManager {
+    fn default() -> Self {
+        AudioManager {
+            menu_bgm: Handle::default(),
+            menu_instance: None,
+            game_bgm: Handle::default(),
+            game_instance: None,
+        }
+    }
+}
 
 fn menu_run(
     mut q_menu: Query<(&mut Menu, &ActionState<MenuAction>)>,
@@ -223,11 +242,17 @@ fn menu_cleanup(mut commands: Commands, query: Query<Entity, With<Menu>>) {
     commands.entity(query.single()).despawn_recursive();
 }
 
-fn start_background_audio(asset_server: Res<AssetServer>, audio: Res<KiraAudio>) {
+fn start_background_audio(
+    asset_server: Res<AssetServer>,
+    audio: Res<KiraAudio>,
+    mut audio_manager: ResMut<AudioManager>,
+) {
     //if config.sound.enabled {
-    let source: Handle<KiraAudioSource> =
-        asset_server.load("bgm/621165__bainmack__rock-song-short16.wav");
+    audio_manager.menu_bgm = asset_server.load("bgm/621165__bainmack__rock-song-short16.wav");
     audio.set_volume(1.); //config.sound.volume);
-    audio.play_looped(source);
+    audio_manager.menu_instance = Some(audio.play_looped(audio_manager.menu_bgm.clone()));
     //}
+
+    // Precache game audio, fairly slow to load
+    audio_manager.game_bgm = asset_server.load("bgm/436507__doctor-dreamchip__2018-08-02.ogg");
 }
