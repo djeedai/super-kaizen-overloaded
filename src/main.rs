@@ -16,7 +16,7 @@ mod menu;
 
 use debug::DebugPlugin;
 use enemy::EnemyPlugin;
-use game::{GamePlugin, Quad, Bullet};
+use game::{Bullet, GamePlugin, Quad};
 use menu::MenuPlugin;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -50,7 +50,7 @@ fn main() {
     .add_plugin(FrameTimeDiagnosticsPlugin::default())
     //.add_plugin(LogDiagnosticsPlugin::default())
     .add_plugin(DebugPlugin)
-    .add_plugin(WorldInspectorPlugin::new())
+    .add_plugin(WorldInspectorPlugin::new().filter::<Without<Bullet>>())
     .add_plugin(TweeningPlugin)
     .add_plugin(AudioPlugin)
     .add_plugin(PhysicsPlugin::default());
