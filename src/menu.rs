@@ -268,11 +268,8 @@ fn start_background_audio(
     mut audio_manager: ResMut<AudioManager>,
 ) {
     //if config.sound.enabled {
-    audio_manager.menu_bgm = asset_server.load("bgm/621165__bainmack__rock-song-short16.wav");
+    audio_manager.menu_bgm = asset_server.load("bgm/436507__doctor-dreamchip__2018-08-02.ogg");
     audio.set_volume(1.); //config.sound.volume);
     audio_manager.menu_instance = Some(audio.play_looped(audio_manager.menu_bgm.clone()));
     //}
-
-    // Precache game audio, fairly slow to load
-    audio_manager.game_bgm = asset_server.load("bgm/436507__doctor-dreamchip__2018-08-02.ogg");
 }
