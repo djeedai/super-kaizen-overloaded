@@ -32,7 +32,8 @@ fn main() {
         vsync: true,
         ..Default::default()
     })
-    .insert_resource(ClearColor(Color::rgb(0.5, 0.5, 0.7)))
+    .insert_resource(ClearColor(Color::rgba(0., 0., 0., 0.)))
+    .insert_resource(bevy_atmosphere::AtmosphereMat::default())
     .add_plugins(DefaultPlugins)
     .add_plugin(FrameTimeDiagnosticsPlugin::default())
     //.add_plugin(LogDiagnosticsPlugin::default())
