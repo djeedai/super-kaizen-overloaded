@@ -10,7 +10,7 @@ on:
 #       - '*'
 
 env:
-  binary: overloaded
+  binary: unfair
 
 
 jobs:
