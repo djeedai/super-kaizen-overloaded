@@ -198,17 +198,17 @@ struct LifebarOver;
 #[derive(Debug, Clone)]
 pub struct InitLifebarsEvent {
     /// Entity holding the LifebarHud component of the lifebars to update.
-    entity: Entity,
+    pub entity: Entity,
     /// Colors of all lifebars, from undermost (closer to zero life) to topmost (first one to take damages).
-    colors: Vec<Color>,
+    pub colors: Vec<Color>,
     /// Total life per lifebar.
-    life_per_bar: f32,
+    pub life_per_bar: f32,
 }
 
 #[derive(Debug, Clone)]
 pub struct ShowLifebarsEvent {
     /// Entity holding the LifebarHud component of the lifebars to update.
-    entity: Entity,
+    pub entity: Entity,
 }
 
 #[derive(Debug, Clone)]

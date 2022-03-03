@@ -14,7 +14,10 @@ use std::{
 };
 
 use crate::{
-    game::{DamageEvent, LifebarHud, LifebarOrientation, PlayerController, UpdateLifebarsEvent},
+    game::{
+        DamageEvent, InitLifebarsEvent, LifebarHud, LifebarOrientation, PlayerController,
+        ShowLifebarsEvent, UpdateLifebarsEvent,
+    },
     AppState, Bullet, Layer, Quad,
 };
 
@@ -46,6 +49,8 @@ enum BulletKind {
 enum FireTagKind {
     #[serde(alias = "spiral")]
     Spiral,
+    #[serde(alias = "double_spiral")]
+    DoubleSpiral,
     #[serde(alias = "aim_burst")]
     AimBurst,
 }
@@ -131,7 +136,13 @@ impl EnemyManager {
         self.descriptors.insert(descriptor.name.clone(), descriptor);
     }
 
-    fn execute_timeline(&mut self, dt: f32, commands: &mut Commands) {
+    fn execute_timeline(
+        &mut self,
+        dt: f32,
+        commands: &mut Commands,
+        init_events: &mut EventWriter<InitLifebarsEvent>,
+        show_events: &mut EventWriter<ShowLifebarsEvent>,
+    ) {
         self.timeline.time += dt as f64;
         for index in self.timeline.index..self.timeline.events.len() {
             let ev = &self.timeline.events[index];
@@ -139,12 +150,19 @@ impl EnemyManager {
                 self.timeline.index = index;
                 return;
             }
-            self.spawn(commands, &ev.enemy, ev.start_pos);
+            self.spawn(commands, init_events, show_events, &ev.enemy, ev.start_pos);
         }
         self.timeline.index = self.timeline.events.len(); // timeline done
     }
 
-    fn spawn(&self, commands: &mut Commands, desc: &str, position: Vec3) {
+    fn spawn(
+        &self,
+        commands: &mut Commands,
+        init_events: &mut EventWriter<InitLifebarsEvent>,
+        show_events: &mut EventWriter<ShowLifebarsEvent>,
+        desc: &str,
+        position: Vec3,
+    ) {
         if let Some(desc) = self.descriptors.get(&desc.to_owned()) {
             let motion_pattern: Box<dyn MotionPattern + Send + Sync> =
                 match &desc.motion_pattern_kind {
@@ -170,6 +188,14 @@ impl EnemyManager {
                     let mut fire_tag = FireTagSpiral::default();
                     fire_tag.bullet_mesh = bullet_assets.mesh.clone();
                     fire_tag.bullet_material = bullet_assets.material.clone();
+                    Box::new(fire_tag)
+                }
+                FireTagKind::DoubleSpiral => {
+                    let mut fire_tag = FireTagDoubleSpiral::default();
+                    fire_tag.spiral1.bullet_mesh = bullet_assets.mesh.clone();
+                    fire_tag.spiral1.bullet_material = bullet_assets.material.clone();
+                    fire_tag.spiral2.bullet_mesh = bullet_assets.mesh.clone();
+                    fire_tag.spiral2.bullet_material = bullet_assets.material.clone();
                     Box::new(fire_tag)
                 }
                 FireTagKind::AimBurst => {
@@ -207,6 +233,18 @@ impl EnemyManager {
                         .with_masks(&[Layer::World, Layer::Player, Layer::PlayerBullet]),
                 )
                 .id();
+
+            if desc.is_boss {
+                init_events.send(InitLifebarsEvent {
+                    entity: self.boss_lifebar_entity,
+                    colors: vec![Color::RED, Color::ORANGE, Color::YELLOW],
+                    life_per_bar: desc.life / 3.,
+                });
+                show_events.send(ShowLifebarsEvent {
+                    entity: self.boss_lifebar_entity,
+                });
+            }
+
             println!("SPAWNED ENEMY {:?} @ {:?}", entity, position);
         } else {
             println!("Failed to spawn unknown enemy type '{}'", desc);
@@ -361,6 +399,30 @@ impl FireTag for FireTagSpiral {
         }
         // sequence
         self.cur_angle = (self.cur_angle + self.rotate_speed * dt) % TAU;
+    }
+}
+
+struct FireTagDoubleSpiral {
+    spiral1: FireTagSpiral,
+    spiral2: FireTagSpiral,
+}
+
+impl Default for FireTagDoubleSpiral {
+    fn default() -> Self {
+        FireTagDoubleSpiral {
+            spiral1: FireTagSpiral::default(),
+            spiral2: FireTagSpiral {
+                rotate_speed: -35_f32.to_radians(),
+                ..Default::default()
+            },
+        }
+    }
+}
+
+impl FireTag for FireTagDoubleSpiral {
+    fn execute(&mut self, mut context: &mut FireTagContext) {
+        self.spiral1.execute(context);
+        self.spiral2.execute(context);
     }
 }
 
@@ -672,11 +734,6 @@ fn setup_enemy(
 
     manager.timeline.start_time = database.timeline_delay;
     manager.timeline.events = database.timeline;
-
-    // TEMP
-    // manager.spawn(&mut commands, "fly_by", Vec3::new(5., 0.8, 0.));
-    // manager.spawn(&mut commands, "fly_by", Vec3::new(5., -0.8, 0.));
-    // manager.spawn(&mut commands, "6_arm_spiral", Vec3::new(3.5, 0., 0.));
 }
 
 fn update_enemy(
@@ -694,6 +751,8 @@ fn update_enemy(
     time: Res<Time>,
     mut manager: ResMut<EnemyManager>,
     mut damage_events: EventReader<DamageEvent>,
+    mut init_events: EventWriter<InitLifebarsEvent>,
+    mut show_events: EventWriter<ShowLifebarsEvent>,
     mut lifebar_events: EventWriter<UpdateLifebarsEvent>,
 ) {
     //println!("update_enemy() t={}", time.seconds_since_startup());
@@ -701,7 +760,7 @@ fn update_enemy(
     let dt = time.delta_seconds();
 
     // Execute timeline
-    manager.execute_timeline(dt, &mut commands);
+    manager.execute_timeline(dt, &mut commands, &mut init_events, &mut show_events);
 
     // need to loop once per enemy, so collect all now
     let damage_events = damage_events.iter().collect::<Vec<_>>();
