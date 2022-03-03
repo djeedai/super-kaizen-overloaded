@@ -39,7 +39,9 @@ impl Plugin for GamePlugin {
             )
             .add_system_set_to_stage(
                 CoreStage::Update,
-                SystemSet::on_enter(AppState::InGame).with_system(game_setup),
+                SystemSet::on_enter(AppState::InGame)
+                    .with_system(game_setup)
+                    .with_system(lifebar_text_setup),
             )
             .add_system_set_to_stage(
                 CoreStage::Update,
@@ -366,6 +368,55 @@ impl LifebarHud {
         self.remain_life = remain_life;
         self.force_update = true;
     }
+}
+
+#[derive(Component)]
+struct LifebarCounter;
+
+fn lifebar_text_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn_bundle(UiCameraBundle::default());
+
+    commands
+        .spawn_bundle(NodeBundle {
+            // root
+            style: Style {
+                size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+                justify_content: JustifyContent::Center,
+                ..Default::default()
+            },
+            color: UiColor(Color::NONE),
+            ..Default::default()
+        })
+        .insert(Name::new("LifeBarText"))
+        .with_children(|parent| {
+            parent
+                .spawn_bundle(TextBundle {
+                    style: Style {
+                        align_self: AlignSelf::FlexStart,
+                        position_type: PositionType::Absolute,
+                        position: Rect {
+                            top: Val::Px(5.0),
+                            left: Val::Px(5.0),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    text: Text::with_section(
+                        "",
+                        TextStyle {
+                            font: asset_server.load("fonts/FiraMono-Regular.ttf"),
+                            font_size: 26.0,
+                            color: Color::rgb_u8(32, 32, 32),
+                        },
+                        TextAlignment {
+                            horizontal: HorizontalAlign::Left,
+                            ..Default::default()
+                        },
+                    ),
+                    ..Default::default()
+                })
+                .insert(LifebarCounter);
+        });
 }
 
 #[derive(Component, Default)]
@@ -887,6 +938,8 @@ fn update_hud(
         (&mut LifebarOver, &mut Transform, &mut Animator<Transform>),
         Without<LifebarHud>,
     >,
+    mut text_query: Query<(&mut Text, &mut LifebarCounter)>,
+    player_controller: Query<&PlayerController>, // FIXME - bad design
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut init_events: EventReader<InitLifebarsEvent>,
     mut show_events: EventReader<ShowLifebarsEvent>,
@@ -1069,6 +1122,18 @@ fn update_hud(
                 over_mat.base_color = over_color;
             }
         }
+
+        // Update the text
+        // THIS IS UGLY DUE TO FORCED USE OF UI AND LACK OF WORLD-SPACE TEXT :'(
+        // if !player_controller.is_empty() {
+        //     if hud_entity == player_controller.single().lifebar_entity {
+        //         if !text_query.is_empty() {
+        //             let (mut text, mut counter) = text_query.single_mut();
+        //             text.sections[0].value =
+        //                 format!("{}/{}", hud.index + 1, hud.lifebars.len()).into();
+        //         }
+        //     }
+        // }
     }
 }
 

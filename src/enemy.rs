@@ -798,10 +798,15 @@ fn update_enemy(
         }
 
         //println!("enemy xform={:?}", transform);
+        let target_pos = if q_player.is_empty() {
+            Vec3::ZERO
+        } else {
+            q_player.single().translation
+        };
         controller.update(
             dt,
             transform.translation,
-            q_player.single().translation,
+            target_pos,
             &mut commands,
             &mut *transform,
             &mut *animator,
