@@ -1,6 +1,7 @@
 use bevy::{
     app::CoreStage,
     asset::AssetStage,
+    gltf::{Gltf, GltfMesh},
     input::gamepad::GamepadButtonType,
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
@@ -50,6 +51,7 @@ struct PlayerController {
     bullet_mesh: Handle<Mesh>,
     bullet_material: Handle<StandardMaterial>,
     primary_fire_delay: f32,
+    primary_fire_offset: Vec3,
 }
 
 impl Default for PlayerController {
@@ -61,6 +63,7 @@ impl Default for PlayerController {
             bullet_mesh: Handle::default(),
             bullet_material: Handle::default(),
             primary_fire_delay: 0.084,
+            primary_fire_offset: Vec3::new(0.58, 0., -0.22),
         }
     }
 }
@@ -71,6 +74,11 @@ struct Player;
 #[derive(Component)]
 struct Bullet(pub Vec3);
 
+#[derive(Component, Default)]
+struct ShipController {
+    roll: f32,
+}
+
 fn game_run(
     mut commands: Commands,
     mut query: Query<(
@@ -78,6 +86,7 @@ fn game_run(
         &ActionState<PlayerAction>,
         &mut Transform,
     )>,
+    mut q_ship: Query<(&mut Transform, &mut ShipController), Without<PlayerController>>,
     time: Res<Time>,
 ) {
     //println!("game_run");
@@ -98,12 +107,29 @@ fn game_run(
     if action_state.pressed(&PlayerAction::MoveRight) {
         controller.input_dir.x += 1.;
     }
-    if let Some(input_dir) = controller.input_dir.try_normalize() {
+    let dv = if let Some(input_dir) = controller.input_dir.try_normalize() {
         controller.input_dir = input_dir;
         const SPEED: f32 = 1.6;
         let dv = input_dir * SPEED * dt;
         transform.translation += Vec3::new(dv.x, dv.y, 0.);
-    }
+        dv
+    } else {
+        Vec2::ZERO
+    };
+
+    let (mut ship_transform, mut ship_controller) = q_ship.single_mut();
+    let target_roll = if dv.y > 0. {
+        -20.
+    } else {
+        if dv.y < 0. {
+            20.
+        } else {
+            0.
+        }
+    };
+    let roll = ship_controller.roll.lerp(&target_roll, &(dt * 5.));
+    ship_controller.roll = roll;
+    ship_transform.rotation = Quat::from_rotation_x(roll.to_radians());
 
     let was_cooling = controller.primary_cooloff > 0.;
     controller.primary_cooloff -= dt;
@@ -112,11 +138,13 @@ fn game_run(
             controller.primary_cooloff = 0.;
         }
         controller.primary_cooloff += controller.primary_fire_delay;
+        let mut transform = transform.with_rotation(Quat::from_rotation_x(90_f32.to_radians()));
+        transform.translation += controller.primary_fire_offset * 0.4; // TODO - Same scale as model
         commands
             .spawn_bundle(PbrBundle {
                 mesh: controller.bullet_mesh.clone(),
                 material: controller.bullet_material.clone(),
-                transform: transform.with_rotation(Quat::from_rotation_x(90_f32.to_radians())),
+                transform,
                 ..Default::default()
             })
             .insert(NotShadowCaster)
@@ -146,6 +174,8 @@ fn game_setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     println!("game_setup");
+
+    let ship_mesh: Handle<Scene> = asset_server.load("ship1.glb#Scene0");
 
     let bullet_texture = asset_server.load("textures/bullet1.png");
     let mut player_controller = PlayerController::default();
@@ -195,17 +225,31 @@ fn game_setup(
     //input_map.insert(PlayerAction::ShootPrimary, MouseButton::Left);
 
     commands
-        .spawn_bundle(PbrBundle {
-            mesh: meshes.add(Mesh::from(shape::Cube { size: 0.1 })),
-            material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-            transform: Transform::from_xyz(0.0, 0.0, 0.0),
-            ..Default::default()
-        })
+        // .spawn_bundle(PbrBundle {
+        //     mesh: meshes.add(Mesh::from(shape::Cube { size: 0.1 })),
+        //     material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+        //     transform: Transform::from_xyz(0.0, 0.0, 0.0),
+        //     ..Default::default()
+        // })
+        .spawn()
+        .insert(Transform::identity())
+        .insert(GlobalTransform::identity())
         .insert(Name::new("Player"))
         .insert(Player)
         .insert(player_controller)
         .insert_bundle(InputManagerBundle::<PlayerAction> {
             action_state: ActionState::default(),
             input_map,
+        })
+        .with_children(|parent| {
+            parent
+                .spawn_bundle((
+                    Transform::from_scale(Vec3::splat(0.4)),
+                    GlobalTransform::identity(),
+                ))
+                .insert(ShipController::default())
+                .with_children(|parent| {
+                    parent.spawn_scene(ship_mesh);
+                });
         });
 }
