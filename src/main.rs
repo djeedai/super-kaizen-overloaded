@@ -4,10 +4,12 @@ use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
 };
-use bevy_inspector_egui::WorldInspectorPlugin;
 use bevy_kira_audio::{Audio, AudioPlugin};
 use bevy_tweening::*;
 use heron::prelude::*;
+
+#[cfg(debug_assertions)]
+use bevy_inspector_egui::WorldInspectorPlugin;
 
 mod debug;
 mod enemy;
@@ -47,13 +49,16 @@ fn main() {
     .insert_resource(ClearColor(Color::rgba(0., 0., 0., 0.)))
     .insert_resource(bevy_atmosphere::AtmosphereMat::default())
     .add_plugins(DefaultPlugins)
-    .add_plugin(FrameTimeDiagnosticsPlugin::default())
     //.add_plugin(LogDiagnosticsPlugin::default())
-    .add_plugin(DebugPlugin)
-    .add_plugin(WorldInspectorPlugin::new().filter::<Without<Bullet>>())
-    .add_plugin(TweeningPlugin)
-    .add_plugin(AudioPlugin)
-    .add_plugin(PhysicsPlugin::default());
+    .add_plugin(FrameTimeDiagnosticsPlugin::default());
+
+    #[cfg(debug_assertions)]
+    app.add_plugin(DebugPlugin)
+        .add_plugin(WorldInspectorPlugin::new().filter::<Without<Bullet>>());
+
+    app.add_plugin(TweeningPlugin)
+        .add_plugin(AudioPlugin)
+        .add_plugin(PhysicsPlugin::default());
 
     let initial_state = AppState::Boot;
     app.add_state(initial_state)
