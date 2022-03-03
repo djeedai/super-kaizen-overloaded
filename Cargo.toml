@@ -1,11 +1,11 @@
 [package]
-name = "unfair"
+name = "super-kaizen-overloaded"
 version = "0.1.0"
 authors = ["Jerome Humbert <djeedai@gmail.com>"]
 edition = "2021"
 resolver = "2"
 description = ""
-keywords = ["game", "gamedev", "bevy"]
+keywords = ["game", "gamedev", "bevy", "shmup", "shoot'em up"]
 license = "MIT OR Apache-2.0"
 
 [dependencies]

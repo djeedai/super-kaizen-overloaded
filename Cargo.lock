@@ -2982,6 +2982,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
+name = "super-kaizen-overloaded"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "bevy-inspector-egui",
+ "bevy_atmosphere",
+ "bevy_kira_audio",
+ "bevy_prototype_debug_lines",
+ "bevy_tweening",
+ "heron",
+ "leafwing-input-manager",
+ "parking_lot",
+ "rand",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "svg_fmt"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3155,25 +3174,6 @@ name = "typenum"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
-
-[[package]]
-name = "unfair"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bevy",
- "bevy-inspector-egui",
- "bevy_atmosphere",
- "bevy_kira_audio",
- "bevy_prototype_debug_lines",
- "bevy_tweening",
- "heron",
- "leafwing-input-manager",
- "parking_lot",
- "rand",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "unicode-segmentation"
