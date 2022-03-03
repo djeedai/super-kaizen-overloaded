@@ -44,11 +44,17 @@ jobs:
           sudo apt-get update
           sudo apt install -y xvfb libegl1-mesa libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers
         if: runner.os == 'linux'
-      - name: Build & run tests
-        run: cargo test
+      - name: Build Release
+        run: cargo build --release
         env:
           CARGO_INCREMENTAL: 0
+      - name: List artifacts
+        run: ls -l
+        if: runner.os == 'linux'
       - uses: actions/upload-artifact@v2
         with:
           name: build ${{ matrix.os }} ${{ matrix.toolchain }}
-          path: ${{ github.workspace }}/target
+          path: |
+            ${{ github.workspace }}/target/release/unfair.exe
+            ${{ github.workspace }}/target/release/unfair.pdb
+        if: runner.os == 'windows' && matrix.toolchain == 'stable'
