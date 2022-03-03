@@ -3,6 +3,7 @@ use bevy::{
     asset::AssetStage,
     gltf::{Gltf, GltfMesh},
     input::gamepad::GamepadButtonType,
+    math::const_vec3,
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
 };
@@ -20,6 +21,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<PlayerController>()
             .add_event::<DamageEvent>()
+            .add_event::<InitLifebarsEvent>()
             .add_plugin(bevy_atmosphere::AtmospherePlugin { dynamic: true })
             .add_plugin(InputManagerPlugin::<PlayerAction>::default())
             .add_system_set_to_stage(
@@ -31,7 +33,8 @@ impl Plugin for GamePlugin {
                 SystemSet::on_update(AppState::InGame)
                     .with_system(game_run)
                     .with_system(bullet_update)
-                    .with_system(detect_collisions),
+                    .with_system(detect_collisions)
+                    .with_system(update_hud),
             );
     }
 }
@@ -43,6 +46,8 @@ enum PlayerAction {
     MoveLeft,
     MoveRight,
     ShootPrimary,
+    //
+    DebugSpawnBoss,
 }
 
 #[derive(Component, Reflect)]
@@ -85,6 +90,67 @@ struct ShipController {
 #[derive(Component)]
 struct MainCamera;
 
+/// Event to damage a player or enemy.
+#[derive(Debug)]
+pub struct DamageEvent(pub f32);
+
+struct Lifebar {
+    color: Color,
+}
+
+#[derive(Component)]
+struct LifebarUnder;
+
+#[derive(Component)]
+struct LifebarOver;
+
+#[derive(Debug, Clone)]
+struct InitLifebarsEvent {
+    /// Colors of all lifebars, from undermost (closer to zero life) to topmost (first one to take damages).
+    colors: Vec<Color>,
+    /// Total life per lifebar.
+    life_per_bar: f32,
+}
+
+#[derive(Component, Default)]
+struct HudManager {
+    lifebars_visible: bool,
+    lifebar_was_visible: bool,
+    /// Descriptions of all lifebars.
+    lifebars: Vec<Lifebar>,
+    /// Index of current lifebar.
+    lifebar_index: usize,
+    /// Total life per lifebar.
+    lifebar_life: f32,
+    /// Remaining life in current lifebar.
+    lifebar_remain_life: f32,
+    /// Force an update of the lifebar state (including colors).
+    lifebar_force_update: bool,
+    /// Material for the next lifebar under the current one, if any.
+    under_mat: Handle<StandardMaterial>,
+    /// Material for the current lifebar.
+    over_mat: Handle<StandardMaterial>,
+}
+
+const LIFEBAR_VISIBLE_POS: Vec3 = const_vec3!([0., 1.8, 0.]);
+const LIFEBAR_HIDDEN_POS: Vec3 = const_vec3!([0., 2.2, 0.]);
+
+impl HudManager {
+    pub fn set_lifebars(&mut self, life: f32, colors: impl IntoIterator<Item = Color>) {
+        self.lifebars = colors.into_iter().map(|color| Lifebar { color }).collect();
+        self.lifebar_index = self.lifebars.len() - 1;
+        self.lifebar_life = life;
+        self.lifebar_remain_life = life;
+        self.lifebar_force_update = true;
+    }
+
+    pub fn set_lifebar_visible(&mut self, visible: bool) {
+        self.lifebars_visible = visible;
+    }
+
+    fn update(&mut self, under: &mut LifebarUnder, over: &mut LifebarOver) {}
+}
+
 // FIXME
 const SHIP1_SCALE: f32 = 0.3;
 
@@ -97,6 +163,8 @@ fn game_run(
     )>,
     mut q_ship: Query<(&mut Transform, &mut ShipController), Without<PlayerController>>,
     time: Res<Time>,
+    // DEBUG
+    mut init_events: EventWriter<InitLifebarsEvent>,
 ) {
     //println!("game_run");
 
@@ -170,6 +238,15 @@ fn game_run(
                     .with_group(Layer::PlayerBullet)
                     .with_masks(&[Layer::World, Layer::Enemy]),
             );
+    }
+
+    // DEBUG
+
+    if action_state.just_pressed(&PlayerAction::DebugSpawnBoss) {
+        init_events.send(InitLifebarsEvent {
+            colors: [Color::RED, Color::BLUE].into(),
+            life_per_bar: 10.,
+        })
     }
 }
 
@@ -247,18 +324,30 @@ fn game_setup(
 
     // Debug camera for Heron/Rapier 2D collision shapes
     // FIXME - doesn't work
-    //commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+    // commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+    // commands.spawn_bundle(SpriteBundle{
+    //     sprite: Sprite {
+    //         color: Color::RED,
+    //         custom_size: Some(Vec2::new(500., 10.)),
+    //         ..Default::default()
+    //     },
+    //     //texture: asset_server.load("textures/bullet_dev_32.png"),
+    //     transform: Transform::identity(),
+    //     ..Default::default()
+    // });
 
     // light
-    commands.spawn_bundle(PointLightBundle {
-        point_light: PointLight {
-            intensity: 1500.0,
-            shadows_enabled: true,
+    commands
+        .spawn_bundle(PointLightBundle {
+            point_light: PointLight {
+                intensity: 1500.0,
+                shadows_enabled: true,
+                ..Default::default()
+            },
+            transform: Transform::from_xyz(2.0, 4.0, 2.0),
             ..Default::default()
-        },
-        transform: Transform::from_xyz(2.0, 4.0, 2.0),
-        ..Default::default()
-    });
+        })
+        .insert(Name::new("PointLight"));
 
     //let font = asset_server.load("fonts/FiraMono-Regular.ttf");
 
@@ -278,6 +367,7 @@ fn game_setup(
     input_map.insert(PlayerAction::ShootPrimary, KeyCode::Space);
     input_map.insert(PlayerAction::ShootPrimary, KeyCode::LControl);
     //input_map.insert(PlayerAction::ShootPrimary, MouseButton::Left);
+    input_map.insert(PlayerAction::DebugSpawnBoss, KeyCode::F1);
 
     // Player entity
     commands
@@ -323,9 +413,10 @@ fn game_setup(
         .spawn_bundle(PbrBundle {
             mesh: meshes.add(Mesh::from(shape::Cube { size: 0.1 })),
             material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-            transform: Transform::from_xyz(0.0, 0.0, 0.0),
+            transform: Transform::from_xyz(2.0, 0.0, 0.0),
             ..Default::default()
         })
+        .insert(Name::new("TEMP - Enemy"))
         // Physics
         .insert(RigidBody::KinematicPositionBased)
         .insert(CollisionShape::Sphere { radius: 0.1 })
@@ -336,11 +427,69 @@ fn game_setup(
                 .with_group(Layer::Enemy)
                 .with_masks(&[Layer::World, Layer::Player, Layer::PlayerBullet]),
         );
-}
 
-/// Event to damage a player or enemy.
-#[derive(Debug)]
-pub struct DamageEvent(pub f32);
+    // HUD
+    let hud_mat_black = materials.add(StandardMaterial {
+        base_color: Color::BLACK,
+        unlit: true,
+        alpha_mode: AlphaMode::Blend,
+        ..Default::default()
+    });
+    let hud_mat_lifebar_under = materials.add(StandardMaterial {
+        base_color: Color::RED,
+        unlit: true,
+        alpha_mode: AlphaMode::Blend,
+        ..Default::default()
+    });
+    let hud_mat_lifebar_over = materials.add(StandardMaterial {
+        base_color: Color::GREEN,
+        unlit: true,
+        alpha_mode: AlphaMode::Blend,
+        ..Default::default()
+    });
+    let mut hud = HudManager::default();
+    hud.set_lifebars(40.0, [Color::RED, Color::ORANGE, Color::YELLOW]);
+    hud.under_mat = hud_mat_lifebar_under.clone();
+    hud.over_mat = hud_mat_lifebar_over.clone();
+    hud.set_lifebar_visible(true); // TEMP
+    commands
+        .spawn_bundle(PbrBundle {
+            mesh: meshes.add(Mesh::from(shape::Quad {
+                size: Vec2::new(4.01, 0.05),
+                flip: false,
+            })),
+            material: hud_mat_black.clone(),
+            transform: Transform::from_translation(LIFEBAR_HIDDEN_POS),
+            ..Default::default()
+        })
+        .insert(Name::new("HudManager"))
+        .insert(hud)
+        .insert(Animator::<Transform>::default().with_state(AnimatorState::Paused))
+        .with_children(|parent| {
+            parent
+                .spawn_bundle(PbrBundle {
+                    mesh: meshes.add(Mesh::from(shape::Quad {
+                        size: Vec2::new(4., 0.04),
+                        flip: false,
+                    })),
+                    material: hud_mat_lifebar_under.clone(),
+                    transform: Transform::from_xyz(0.0, 0.0, 0.001),
+                    ..Default::default()
+                })
+                .insert(LifebarUnder);
+            parent
+                .spawn_bundle(PbrBundle {
+                    mesh: meshes.add(Mesh::from(shape::Quad {
+                        size: Vec2::new(4., 0.04),
+                        flip: false,
+                    })),
+                    material: hud_mat_lifebar_over.clone(),
+                    transform: Transform::from_xyz(0.0, 0.0, 0.002),
+                    ..Default::default()
+                })
+                .insert(LifebarOver);
+        });
+}
 
 fn detect_collisions(
     mut commands: Commands,
@@ -394,6 +543,118 @@ fn detect_collisions(
                 // )
             }
         }
+    }
+}
+
+fn update_hud(
+    mut query: QuerySet<(
+        QueryState<(&mut HudManager, &mut Transform, &mut Animator<Transform>)>,
+        QueryState<(&mut LifebarOver, &mut Transform)>,
+        QueryState<(&mut LifebarUnder, &mut Transform)>,
+    )>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut damage_events: EventReader<DamageEvent>,
+    mut init_events: EventReader<InitLifebarsEvent>,
+) {
+    // Animate hud
+    let mut under_progress = None;
+    let mut over_progress = None;
+    {
+        let mut q0 = query.q0();
+        let (mut hud, mut transform, mut animator) = q0.single_mut();
+
+        // Check for init event
+        if let Some(mut ev) = init_events.iter().last() {
+            let mut ev = ev.clone();
+            hud.set_lifebars(ev.life_per_bar, ev.colors.into_iter());
+            hud.set_lifebar_visible(true);
+        }
+
+        // Update lifetime bars from damage events
+        let mut damage = 0.;
+        for ev in damage_events.iter() {
+            damage += ev.0;
+        }
+        let mut need_color_update = hud.lifebar_force_update;
+        if hud.lifebar_force_update {
+            hud.lifebar_index = hud.lifebars.len().max(1) - 1;
+            hud.lifebar_remain_life = hud.lifebar_life;
+        }
+        hud.lifebar_force_update = false;
+        if damage > 0. {
+            hud.lifebar_remain_life -= damage;
+            // println!(
+            //     "damage: {}, lifebar_remain_life: {}",
+            //     damage, hud.lifebar_remain_life
+            // );
+            if hud.lifebar_remain_life <= 0. {
+                // Change bars
+                if hud.lifebar_index >= 1 {
+                    hud.lifebar_remain_life = hud.lifebar_life;
+                    hud.lifebar_index -= 1;
+                    over_progress = Some(1.);
+                    need_color_update = true;
+                } else {
+                    // killed
+                    println!("BOSS KILLED");
+                    over_progress = Some(0.);
+                    hud.lifebars_visible = false;
+                }
+            } else {
+                over_progress = Some((hud.lifebar_remain_life / hud.lifebar_life).clamp(0., 1.));
+                // println!(
+                //     "{} / {} = over_progress: {}",
+                //     hud.lifebar_remain_life,
+                //     hud.lifebar_life,
+                //     over_progress.unwrap()
+                // );
+            }
+        }
+        if need_color_update {
+            let over_color = hud.lifebars[hud.lifebar_index].color;
+            let under_color = if hud.lifebar_index > 0 {
+                hud.lifebars[hud.lifebar_index - 1].color
+            } else {
+                Color::NONE
+            };
+            if let Some(under_mat) = materials.get_mut(hud.under_mat.clone()) {
+                under_mat.base_color = under_color;
+            }
+            if let Some(over_mat) = materials.get_mut(hud.over_mat.clone()) {
+                over_mat.base_color = over_color;
+            }
+        }
+
+        // Update visible/hidden animation
+        if hud.lifebars_visible != hud.lifebar_was_visible {
+            hud.lifebar_was_visible = hud.lifebars_visible;
+            animator.set_tweenable(Tween::new(
+                EaseMethod::Linear,
+                TweeningType::Once,
+                Duration::from_secs_f32(2.5),
+                TransformPositionLens {
+                    start: transform.translation,
+                    end: if hud.lifebars_visible {
+                        LIFEBAR_VISIBLE_POS
+                    } else {
+                        LIFEBAR_HIDDEN_POS
+                    },
+                },
+            ));
+            animator.state = AnimatorState::Playing;
+        }
+    }
+    // Configure over lifebar
+    if let Some(over_progress) = over_progress {
+        let mut q1 = query.q1();
+        let (mut over, mut transform) = q1.single_mut();
+        transform.scale = Vec3::new(over_progress, 1., 1.);
+    }
+    // Configure under lifebar
+    if let Some(under_progress) = under_progress {
+        let mut q2 = query.q2();
+        let (mut under, mut transform) = q2.single_mut();
+        transform.scale = Vec3::new(under_progress, 1., 1.);
     }
 }
 
