@@ -224,7 +224,7 @@ fn enemy_setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let bullet_texture = asset_server.load("textures/bullet_dev_16.png");
+    let bullet_texture = asset_server.load("textures/bullet2.png");
     let bullet_mesh = meshes.add(Mesh::from(Quad { size: 0.1 }));
     let bullet_material = materials.add(StandardMaterial {
         base_color_texture: Some(bullet_texture),
