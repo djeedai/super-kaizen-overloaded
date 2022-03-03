@@ -7,12 +7,15 @@ use bevy::{
 use bevy_inspector_egui::WorldInspectorPlugin;
 use bevy_kira_audio::{Audio, AudioPlugin};
 use bevy_tweening::*;
+use heron::prelude::*;
 
 mod debug;
+mod enemy;
 mod game;
 mod menu;
 
 use debug::DebugPlugin;
+use enemy::EnemyPlugin;
 use game::GamePlugin;
 use menu::MenuPlugin;
 
@@ -21,6 +24,15 @@ pub enum AppState {
     Boot,
     Menu,
     InGame,
+}
+
+#[derive(PhysicsLayer)]
+pub enum Layer {
+    World,
+    Player,
+    PlayerBullet,
+    Enemy,
+    EnemyBullet,
 }
 
 fn main() {
@@ -40,7 +52,8 @@ fn main() {
     .add_plugin(DebugPlugin)
     .add_plugin(WorldInspectorPlugin::new())
     .add_plugin(TweeningPlugin)
-    .add_plugin(AudioPlugin);
+    .add_plugin(AudioPlugin)
+    .add_plugin(PhysicsPlugin::default());
 
     let initial_state = AppState::Boot;
     app.add_state(initial_state)
@@ -49,7 +62,9 @@ fn main() {
         .add_state_to_stage(CoreStage::PostUpdate, initial_state) // BUG #1671
         .add_state_to_stage(CoreStage::Last, initial_state); // BUG #1671
 
-    app.add_plugin(MenuPlugin).add_plugin(GamePlugin);
+    app.add_plugin(MenuPlugin)
+        .add_plugin(GamePlugin)
+        .add_plugin(EnemyPlugin);
 
     // Only enable MSAA on non-web platforms
     #[cfg(not(target_arch = "wasm32"))]

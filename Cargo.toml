@@ -9,16 +9,21 @@ keywords = ["game", "gamedev", "bevy"]
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+# Bevy
 bevy = { version = "0.6", default-features = false, features = ["render", "bevy_winit", "png", "bevy_gltf"] }
 bevy_tweening = "0.3.2"
 bevy_kira_audio = { version = "0.8.0", features = ["wav"] }
 #bevy_atmosphere = "0.2"
 bevy_atmosphere = { path = "crates/bevy_atmosphere" }
 leafwing-input-manager = "0.2.0"
+heron = { version = "2.0.1", features = ["2d", "debug-2d"] }
+
+# Others
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 anyhow = "1.0.4"
 parking_lot = "0.11"
 
+# In-game dev/debug
 bevy-inspector-egui = "0.8.2"
 bevy_prototype_debug_lines = "0.6.1"
