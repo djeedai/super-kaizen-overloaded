@@ -85,7 +85,7 @@ enum PlayerAction {
 
 #[derive(Component, Reflect)]
 #[reflect(Component)]
-struct PlayerController {
+pub struct PlayerController {
     input_dir: Vec2,
     primary_cooloff: f32,
     bullet_texture: Handle<Image>,

@@ -3,16 +3,18 @@ use bevy::{
     asset::AssetStage,
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
+    utils::HashMap,
 };
 use bevy_tweening::{lens::*, *};
 use heron::prelude::*;
+use serde::Deserialize;
 use std::{
     f32::consts::{PI, TAU},
     time::Duration,
 };
 
 use crate::{
-    game::{DamageEvent, LifebarHud, LifebarOrientation, UpdateLifebarsEvent},
+    game::{DamageEvent, LifebarHud, LifebarOrientation, PlayerController, UpdateLifebarsEvent},
     AppState, Bullet, Layer, Quad,
 };
 
@@ -32,12 +34,52 @@ impl Plugin for EnemyPlugin {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+enum FireTagKind {
+    #[serde(alias = "spiral")]
+    Spiral,
+    #[serde(alias = "aim_burst")]
+    AimBurst,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+enum MotionPatternKind {
+    #[serde(alias = "enter_stay")]
+    EnterStay,
+    #[serde(alias = "fly_by")]
+    FlyBy,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct EnemyDescriptor {
+    name: String,
+    life: f32,
+    #[serde(default)]
+    is_boss: bool,
+    fire_tag_kind: FireTagKind,
+    motion_pattern_kind: MotionPatternKind,
+    #[serde(skip)]
+    enemy_mesh: Handle<Mesh>,
+    #[serde(skip)]
+    enemy_material: Handle<StandardMaterial>,
+    #[serde(skip)]
+    bullet_mesh: Handle<Mesh>,
+    #[serde(skip)]
+    bullet_material: Handle<StandardMaterial>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct EnemyDatabase {
+    enemies: Vec<EnemyDescriptor>,
+}
+
 struct EnemyManager {
     mesh: Handle<Mesh>,
     material: Handle<StandardMaterial>,
     bullet_mesh: Handle<Mesh>,
     bullet_material: Handle<StandardMaterial>,
     boss_lifebar_entity: Entity,
+    descriptors: HashMap<String, EnemyDescriptor>,
 }
 
 impl Default for EnemyManager {
@@ -48,65 +90,110 @@ impl Default for EnemyManager {
             bullet_mesh: Handle::default(),
             bullet_material: Handle::default(),
             boss_lifebar_entity: Entity::from_raw(0),
+            descriptors: HashMap::default(),
         }
     }
 }
 
 impl EnemyManager {
-    fn spawn(&self, commands: &mut Commands, position: Vec3) {
-        let mut motion_pattern = EnterStayMotion::default();
-        motion_pattern.enter_height = position.y;
-        let mut fire_tag = FireTagSpiral::default();
-        fire_tag.bullet_mesh = self.bullet_mesh.clone();
-        fire_tag.bullet_material = self.bullet_material.clone();
-        let mut enemy_controller = EnemyController::default();
-        enemy_controller.motion_pattern = Some(Box::new(motion_pattern));
-        enemy_controller.fire_tag = Some(Box::new(fire_tag));
-        enemy_controller.life = 10.;
-        enemy_controller.remain_life = enemy_controller.life;
-        let entity = commands
-            .spawn_bundle(PbrBundle {
-                mesh: self.mesh.clone(),
-                material: self.material.clone(),
-                transform: Transform::from_translation(position),
-                ..Default::default()
-            })
-            .insert(Name::new("Enemy"))
-            .insert(enemy_controller)
-            .insert(Animator::<Transform>::default().with_state(AnimatorState::Paused))
-            // Physics
-            .insert(RigidBody::KinematicPositionBased)
-            .insert(CollisionShape::Sphere { radius: 0.1 })
-            //.insert(Velocity::from_linear(Vec3::X * 5.))
-            //.insert(RotationConstraints::lock())
-            .insert(
-                CollisionLayers::none()
-                    .with_group(Layer::Enemy)
-                    .with_masks(&[Layer::World, Layer::Player, Layer::PlayerBullet]),
-            )
-            .id();
-        println!("SPAWNED ENEMY {:?} @ {:?}", entity, position);
+    fn add_descriptor(&mut self, descriptor: EnemyDescriptor) {
+        self.descriptors.insert(descriptor.name.clone(), descriptor);
+    }
+
+    fn spawn(&self, commands: &mut Commands, desc: &str, position: Vec3) {
+        if let Some(desc) = self.descriptors.get(&desc.to_owned()) {
+            let motion_pattern: Box<dyn MotionPattern + Send + Sync> =
+                match &desc.motion_pattern_kind {
+                    MotionPatternKind::EnterStay => {
+                        let mut motion = EnterStayMotion::default();
+                        motion.enter_height = position.y;
+                        Box::new(motion)
+                    }
+                    MotionPatternKind::FlyBy => {
+                        let mut motion = FlyByMotion::default();
+                        motion.start = position;
+                        motion.direction = if position.y > 0. {
+                            Vec3::new(-1., 0.25, 0.)
+                        } else {
+                            Vec3::new(-1., -0.25, 0.)
+                        };
+                        Box::new(motion)
+                    }
+                };
+            let fire_tag: Box<dyn FireTag + Send + Sync> = match &desc.fire_tag_kind {
+                FireTagKind::Spiral => {
+                    let mut fire_tag = FireTagSpiral::default();
+                    fire_tag.bullet_mesh = self.bullet_mesh.clone();
+                    fire_tag.bullet_material = self.bullet_material.clone();
+                    Box::new(fire_tag)
+                }
+                FireTagKind::AimBurst => {
+                    let mut fire_tag = FireTagAimBurst::default();
+                    fire_tag.bullet_mesh = self.bullet_mesh.clone();
+                    fire_tag.bullet_material = self.bullet_material.clone();
+                    Box::new(fire_tag)
+                }
+            };
+
+            let mut enemy_controller = EnemyController::default();
+            enemy_controller.motion_pattern = Some(motion_pattern);
+            enemy_controller.fire_tag = Some(fire_tag);
+            enemy_controller.life = desc.life;
+            enemy_controller.remain_life = desc.life;
+
+            let entity = commands
+                .spawn_bundle(PbrBundle {
+                    mesh: self.mesh.clone(),
+                    material: self.material.clone(),
+                    transform: Transform::from_translation(position),
+                    ..Default::default()
+                })
+                .insert(Name::new(desc.name.clone()))
+                .insert(enemy_controller)
+                .insert(Animator::<Transform>::default().with_state(AnimatorState::Paused))
+                // Physics
+                .insert(RigidBody::KinematicPositionBased)
+                .insert(CollisionShape::Sphere { radius: 0.1 })
+                //.insert(Velocity::from_linear(Vec3::X * 5.))
+                //.insert(RotationConstraints::lock())
+                .insert(
+                    CollisionLayers::none()
+                        .with_group(Layer::Enemy)
+                        .with_masks(&[Layer::World, Layer::Player, Layer::PlayerBullet]),
+                )
+                .id();
+            println!("SPAWNED ENEMY {:?} @ {:?}", entity, position);
+        } else {
+            println!("Failed to spawn unknown enemy type '{}'", desc);
+        }
     }
 }
 
 struct FireTagContext<'w, 's, 'ctx> {
     dt: f32,
     origin: Vec3,
+    player_position: Vec3,
     commands: &'ctx mut Commands<'w, 's>,
 }
 
 impl<'w, 's, 'ctx> FireTagContext<'w, 's, 'ctx> {
-    fn new(dt: f32, origin: Vec3, commands: &'ctx mut Commands<'w, 's>) -> Self {
+    fn new(
+        dt: f32,
+        origin: Vec3,
+        player_position: Vec3,
+        commands: &'ctx mut Commands<'w, 's>,
+    ) -> Self {
         FireTagContext {
             dt,
             origin,
+            player_position,
             commands,
         }
     }
 
     fn fire(
         &mut self,
-        angle: f32,
+        rot: Quat,
         speed: f32,
         mesh: Handle<Mesh>,
         material: Handle<StandardMaterial>,
@@ -115,7 +202,6 @@ impl<'w, 's, 'ctx> FireTagContext<'w, 's, 'ctx> {
         //     "FIRE: origin={:?} angle={} speed={}",
         //     self.origin, angle, speed
         // );
-        let rot = Quat::from_rotation_z(angle);
         self.commands
             .spawn_bundle(PbrBundle {
                 mesh,
@@ -216,8 +302,9 @@ impl FireTag for FireTagSpiral {
                 //     PI + cone_angle
                 // );
                 if self.cur_iter % 25 >= 5 || idx != aim_arm_idx {
+                    let rot = Quat::from_rotation_z(angle);
                     context.fire(
-                        angle,
+                        rot,
                         self.bullet_speed,
                         self.bullet_mesh.clone(),
                         self.bullet_material.clone(),
@@ -229,6 +316,59 @@ impl FireTag for FireTagSpiral {
         }
         // sequence
         self.cur_angle = (self.cur_angle + self.rotate_speed * dt) % TAU;
+    }
+}
+
+struct FireTagAimBurst {
+    bullet_count: i32,
+    bullet_speed: f32,
+    fire_delay: f32,
+    bullet_mesh: Handle<Mesh>,
+    bullet_material: Handle<StandardMaterial>,
+    //
+    cur_time: f32,
+    cur_iter: i32,
+}
+
+impl Default for FireTagAimBurst {
+    fn default() -> Self {
+        FireTagAimBurst {
+            bullet_count: 6,
+            bullet_speed: 2.1,
+            fire_delay: 0.04,
+            bullet_mesh: Handle::default(),
+            bullet_material: Handle::default(),
+            //
+            cur_time: 0.,
+            cur_iter: 0,
+        }
+    }
+}
+
+impl FireTag for FireTagAimBurst {
+    fn execute(&mut self, mut context: &mut FireTagContext) {
+        if self.cur_iter < self.bullet_count {
+            let dt = context.dt;
+            // println!(
+            //     "EXEC: dt={} cur_angle={} cur_iter={}",
+            //     dt, self.cur_angle, self.cur_iter
+            // );
+            self.cur_time += dt;
+            if self.cur_time >= self.fire_delay {
+                self.cur_time = 0.; // for safety, run at most once per frame
+                let dir = (context.player_position - context.origin)
+                    .try_normalize()
+                    .unwrap_or(Vec3::X);
+                let rot = Quat::from_rotation_arc(Vec3::X, dir);
+                context.fire(
+                    rot,
+                    self.bullet_speed,
+                    self.bullet_mesh.clone(),
+                    self.bullet_material.clone(),
+                );
+                self.cur_iter += 1;
+            }
+        }
     }
 }
 
@@ -315,6 +455,56 @@ impl MotionPattern for EnterStayMotion {
     }
 }
 
+struct FlyByMotion {
+    start: Vec3,
+    direction: Vec3,
+    has_fired: bool,
+}
+
+impl Default for FlyByMotion {
+    fn default() -> Self {
+        FlyByMotion {
+            start: Vec3::ZERO,
+            direction: Vec3::ZERO,
+            has_fired: false,
+        }
+    }
+}
+
+impl MotionPattern for FlyByMotion {
+    fn do_motion(
+        &mut self,
+        dt: f32,
+        transform: &mut Transform,
+        animator: &mut Animator<Transform>,
+    ) -> MotionResult {
+        match &animator.state {
+            AnimatorState::Paused => {
+                let tween = Tween::new(
+                    EaseFunction::QuadraticOut,
+                    TweeningType::Once,
+                    Duration::from_secs_f32(5.),
+                    TransformPositionLens {
+                        start: self.start,
+                        end: self.start + self.direction * 6.,
+                    },
+                );
+                animator.set_tweenable(tween);
+                animator.state = AnimatorState::Playing;
+                MotionResult::DoNothing
+            }
+            AnimatorState::Playing => {
+                if !self.has_fired && animator.progress() >= 0.3 {
+                    self.has_fired = true;
+                    MotionResult::StartFireTag
+                } else {
+                    MotionResult::DoNothing
+                }
+            }
+        }
+    }
+}
+
 #[derive(Component)]
 struct EnemyController {
     motion_pattern: Option<Box<dyn MotionPattern + Send + Sync>>,
@@ -341,6 +531,7 @@ impl EnemyController {
         &mut self,
         dt: f32,
         origin: Vec3,
+        player_position: Vec3,
         commands: &mut Commands,
         transform: &mut Transform,
         animator: &mut Animator<Transform>,
@@ -355,7 +546,7 @@ impl EnemyController {
         // Fire
         if self.fire_tag_started {
             //println!("ENEMY_UPDATE: dt={} origin={:?}", dt, origin);
-            let mut context = FireTagContext::new(dt, origin, commands);
+            let mut context = FireTagContext::new(dt, origin, player_position, commands);
             if let Some(fire_tag) = &mut self.fire_tag {
                 fire_tag.execute(&mut context);
             }
@@ -413,20 +604,30 @@ fn setup_enemy(
     manager.bullet_material = bullet_material;
     manager.boss_lifebar_entity = boss_lifebar_entity;
 
+    let mut database: EnemyDatabase =
+        serde_json::from_str(&include_str!("../assets/enemy_db.json")).unwrap();
+    for descriptor in database.enemies.drain(..) {
+        manager.add_descriptor(descriptor);
+    }
+
     // TEMP
-    manager.spawn(&mut commands, Vec3::new(3., 0.8, 0.));
-    manager.spawn(&mut commands, Vec3::new(3.5, 0., 0.));
-    manager.spawn(&mut commands, Vec3::new(3., -0.8, 0.));
+    manager.spawn(&mut commands, "fly_by", Vec3::new(5., 0.8, 0.));
+    manager.spawn(&mut commands, "fly_by", Vec3::new(5., -0.8, 0.));
+    manager.spawn(&mut commands, "6_arm_spiral", Vec3::new(3.5, 0., 0.));
 }
 
 fn update_enemy(
     mut commands: Commands,
-    mut query: Query<(
-        Entity,
-        &mut EnemyController,
-        &mut Transform,
-        &mut Animator<Transform>,
-    )>,
+    mut query: Query<
+        (
+            Entity,
+            &mut EnemyController,
+            &mut Transform,
+            &mut Animator<Transform>,
+        ),
+        Without<PlayerController>,
+    >,
+    q_player: Query<&Transform, With<PlayerController>>,
     time: Res<Time>,
     manager: Res<EnemyManager>,
     mut damage_events: EventReader<DamageEvent>,
@@ -464,6 +665,7 @@ fn update_enemy(
         controller.update(
             time.delta_seconds(),
             transform.translation,
+            q_player.single().translation,
             &mut commands,
             &mut *transform,
             &mut *animator,
