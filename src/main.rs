@@ -77,5 +77,5 @@ fn main() {
 
 fn boot(mut state: ResMut<State<AppState>>) {
     // workaround for on_enter() not working on initial state; use a dummy initial state instead
-    state.set(AppState::InGame).unwrap();
+    state.set(AppState::Menu).unwrap();
 }
