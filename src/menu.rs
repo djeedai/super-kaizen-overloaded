@@ -5,7 +5,8 @@ use bevy::{
     prelude::*,
 };
 use bevy_kira_audio::{
-    Audio as KiraAudio, AudioPlugin as KiraAudioPlugin, AudioSource as KiraAudioSource,
+    Audio as KiraAudio, AudioChannel as KiraAudioChannel, AudioPlugin as KiraAudioPlugin,
+    AudioSource as KiraAudioSource,
 };
 use bevy_tweening::{lens::*, *};
 use leafwing_input_manager::prelude::*;
@@ -38,6 +39,8 @@ enum MenuAction {
 #[derive(Component, Default)]
 struct Menu {
     selected_index: i32,
+    sound_channel_sfx: KiraAudioChannel,
+    sound_click: Handle<KiraAudioSource>,
 }
 
 #[derive(Component, Default)]
@@ -47,16 +50,19 @@ fn menu_run(
     mut q_menu: Query<(&mut Menu, &ActionState<MenuAction>)>,
     mut q_animators: Query<(&Button, &mut Animator<Transform>)>,
     mut exit: EventWriter<AppExit>,
+    audio: Res<KiraAudio>,
     //mut event_reader: EventReader<TweenCompleted>,
 ) {
     let (mut menu, action_state) = q_menu.single_mut();
     let prev_sel = menu.selected_index;
     if action_state.just_pressed(&MenuAction::SelectNext) {
         menu.selected_index = (menu.selected_index + 1).min(2);
+        audio.play_in_channel(menu.sound_click.clone(), &menu.sound_channel_sfx);
         println!("NEXT");
     }
     if action_state.just_pressed(&MenuAction::SelectPrev) {
         menu.selected_index = (menu.selected_index - 1).max(0);
+        audio.play_in_channel(menu.sound_click.clone(), &menu.sound_channel_sfx);
         println!("PREV");
     }
 
@@ -109,6 +115,10 @@ fn menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     let font = asset_server.load("fonts/FiraMono-Regular.ttf");
 
+    let mut menu = Menu::default();
+    menu.sound_channel_sfx = KiraAudioChannel::new("sfx".to_string());
+    menu.sound_click = asset_server.load("sounds/click4.ogg");
+
     let mut input_map = InputMap::default();
     input_map.insert(MenuAction::SelectNext, KeyCode::Down);
     input_map.insert(MenuAction::SelectNext, GamepadButtonType::DPadDown);
@@ -136,7 +146,7 @@ fn menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..Default::default()
         })
         .insert(Name::new("menu"))
-        .insert(Menu::default())
+        .insert(menu)
         .insert_bundle(InputManagerBundle::<MenuAction> {
             action_state: ActionState::default(),
             input_map,
