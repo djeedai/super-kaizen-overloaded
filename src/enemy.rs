@@ -211,6 +211,7 @@ impl EnemyManager {
             enemy_controller.fire_tag = Some(fire_tag);
             enemy_controller.life = desc.life;
             enemy_controller.remain_life = desc.life;
+            enemy_controller.is_boss = desc.is_boss;
 
             let entity = commands
                 .spawn_bundle(PbrBundle {
@@ -619,6 +620,7 @@ struct EnemyController {
     fire_tag_started: bool,
     life: f32,
     remain_life: f32,
+    is_boss: bool,
 }
 
 impl Default for EnemyController {
@@ -629,6 +631,7 @@ impl Default for EnemyController {
             fire_tag_started: false,
             life: 0.,
             remain_life: 0.,
+            is_boss: false,
         }
     }
 }
@@ -779,10 +782,14 @@ fn update_enemy(
             .sum();
         if damage > 0. {
             controller.remain_life -= damage;
-            lifebar_events.send(UpdateLifebarsEvent {
-                entity: manager.boss_lifebar_entity,
-                remain_life: controller.remain_life,
-            });
+
+            // Update boss lifebar if this enemy is a boss
+            if controller.is_boss {
+                lifebar_events.send(UpdateLifebarsEvent {
+                    entity: manager.boss_lifebar_entity,
+                    remain_life: controller.remain_life,
+                });
+            }
         }
         if controller.remain_life <= 0. {
             commands.entity(entity).despawn_recursive();
