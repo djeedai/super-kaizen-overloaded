@@ -136,6 +136,8 @@ fn menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     let font = asset_server.load("fonts/FiraMono-Regular.ttf");
 
+    let title_image = asset_server.load("title.png");
+
     let mut menu = Menu::default();
     menu.sound_channel_sfx = KiraAudioChannel::new("sfx".to_string());
     menu.sound_click = asset_server.load("sounds/click4.ogg");
@@ -174,6 +176,29 @@ fn menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         })
         .id();
 
+    // Title
+    commands
+        .spawn_bundle(NodeBundle {
+            node: Node {
+                size: Vec2::new(800., 380.),
+            },
+            style: Style {
+                size: Size::new(Val::Px(800.), Val::Px(380.)),
+                min_size: Size::new(Val::Px(800.), Val::Px(380.)),
+                margin: Rect::all(Val::Px(0.)),
+                padding: Rect::all(Val::Px(0.)),
+                align_content: AlignContent::Center,
+                align_items: AlignItems::Center,
+                align_self: AlignSelf::Center,
+                justify_content: JustifyContent::Center,
+                ..Default::default()
+            },
+            image: UiImage(title_image),
+            ..Default::default()
+        })
+        .insert(Name::new("title"))
+        .insert(Parent(container));
+
     const DURATION_SEC: f32 = 1.2;
     const DELAY_MS: u64 = 200;
 
@@ -210,7 +235,7 @@ fn menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     justify_content: JustifyContent::Center,
                     ..Default::default()
                 },
-                color: UiColor(Color::rgb_u8(162, 226, 95)),
+                color: UiColor(Color::rgb_u8(57, 194, 190)),
                 transform: Transform::from_scale(Vec3::splat(0.01)),
                 ..Default::default()
             })
@@ -225,7 +250,7 @@ fn menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextStyle {
                             font: font.clone(),
                             font_size: 48.0,
-                            color: Color::rgb_u8(83, 163, 130),
+                            color: Color::rgb_u8(32, 32, 32),
                         },
                         TextAlignment {
                             vertical: VerticalAlign::Center,
