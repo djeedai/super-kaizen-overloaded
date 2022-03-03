@@ -5,14 +5,16 @@
             "life": 5,
             "is_boss": false,
             "fire_tag_kind": "aim_burst",
-            "motion_pattern_kind": "fly_by"
+            "motion_pattern_kind": "fly_by",
+            "bullet_kind": "white_ball"
         },
         {
             "name": "6_arm_spiral",
             "life": 10,
             "is_boss": false,
             "fire_tag_kind": "spiral",
-            "motion_pattern_kind": "enter_stay"
+            "motion_pattern_kind": "enter_stay",
+            "bullet_kind": "pink_donut"
         }
     ]
 }

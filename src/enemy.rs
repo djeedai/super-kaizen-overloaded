@@ -34,6 +34,14 @@ impl Plugin for EnemyPlugin {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+enum BulletKind {
+    #[serde(alias = "pink_donut")]
+    PinkDonut,
+    #[serde(alias = "white_ball")]
+    WhiteBall,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 enum FireTagKind {
     #[serde(alias = "spiral")]
@@ -58,6 +66,7 @@ struct EnemyDescriptor {
     is_boss: bool,
     fire_tag_kind: FireTagKind,
     motion_pattern_kind: MotionPatternKind,
+    bullet_kind: BulletKind,
     #[serde(skip)]
     enemy_mesh: Handle<Mesh>,
     #[serde(skip)]
@@ -73,13 +82,17 @@ struct EnemyDatabase {
     enemies: Vec<EnemyDescriptor>,
 }
 
+struct BulletAssets {
+    mesh: Handle<Mesh>,
+    material: Handle<StandardMaterial>,
+}
+
 struct EnemyManager {
     mesh: Handle<Mesh>,
     material: Handle<StandardMaterial>,
-    bullet_mesh: Handle<Mesh>,
-    bullet_material: Handle<StandardMaterial>,
     boss_lifebar_entity: Entity,
     descriptors: HashMap<String, EnemyDescriptor>,
+    bullet_assets: HashMap<BulletKind, BulletAssets>,
 }
 
 impl Default for EnemyManager {
@@ -87,10 +100,9 @@ impl Default for EnemyManager {
         EnemyManager {
             mesh: Handle::default(),
             material: Handle::default(),
-            bullet_mesh: Handle::default(),
-            bullet_material: Handle::default(),
             boss_lifebar_entity: Entity::from_raw(0),
             descriptors: HashMap::default(),
+            bullet_assets: HashMap::default(),
         }
     }
 }
@@ -120,17 +132,18 @@ impl EnemyManager {
                         Box::new(motion)
                     }
                 };
+            let bullet_assets = self.bullet_assets.get(&desc.bullet_kind).unwrap();
             let fire_tag: Box<dyn FireTag + Send + Sync> = match &desc.fire_tag_kind {
                 FireTagKind::Spiral => {
                     let mut fire_tag = FireTagSpiral::default();
-                    fire_tag.bullet_mesh = self.bullet_mesh.clone();
-                    fire_tag.bullet_material = self.bullet_material.clone();
+                    fire_tag.bullet_mesh = bullet_assets.mesh.clone();
+                    fire_tag.bullet_material = bullet_assets.material.clone();
                     Box::new(fire_tag)
                 }
                 FireTagKind::AimBurst => {
                     let mut fire_tag = FireTagAimBurst::default();
-                    fire_tag.bullet_mesh = self.bullet_mesh.clone();
-                    fire_tag.bullet_material = self.bullet_material.clone();
+                    fire_tag.bullet_mesh = bullet_assets.mesh.clone();
+                    fire_tag.bullet_material = bullet_assets.material.clone();
                     Box::new(fire_tag)
                 }
             };
@@ -561,14 +574,25 @@ fn setup_enemy(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let bullet_texture = asset_server.load("textures/bullet2.png");
-    let bullet_mesh = meshes.add(Mesh::from(Quad { size: 0.1 }));
-    let bullet_material = materials.add(StandardMaterial {
-        base_color_texture: Some(bullet_texture),
-        //emissive: Color::RED,
-        unlit: true,
-        alpha_mode: AlphaMode::Blend,
-        ..Default::default()
+    manager.bullet_assets.insert(BulletKind::PinkDonut, BulletAssets {
+        mesh: meshes.add(Mesh::from(Quad { size: 0.1 })),
+        material: materials.add(StandardMaterial {
+            base_color_texture: Some(asset_server.load("textures/bullet2.png")),
+            //emissive: Color::RED,
+            unlit: true,
+            alpha_mode: AlphaMode::Blend,
+            ..Default::default()
+        })
+    });
+    manager.bullet_assets.insert(BulletKind::WhiteBall, BulletAssets {
+        mesh: meshes.add(Mesh::from(Quad { size: 0.08 })),
+        material: materials.add(StandardMaterial {
+            base_color_texture: Some(asset_server.load("textures/bullet3.png")),
+            //emissive: Color::WHITE,
+            unlit: true,
+            alpha_mode: AlphaMode::Blend,
+            ..Default::default()
+        })
     });
 
     // FIXME - Copied from game.rs :(
@@ -600,8 +624,6 @@ fn setup_enemy(
 
     manager.mesh = meshes.add(Mesh::from(shape::Cube { size: 0.1 }));
     manager.material = materials.add(Color::rgb(0.8, 0.7, 0.6).into());
-    manager.bullet_mesh = bullet_mesh;
-    manager.bullet_material = bullet_material;
     manager.boss_lifebar_entity = boss_lifebar_entity;
 
     let mut database: EnemyDatabase =
