@@ -597,6 +597,7 @@ fn despawn_bullets_outside_screen(
 struct AudioRes {
     sfx_channel: KiraAudioChannel,
     sound_hit: Handle<KiraAudioSource>,
+    sound_fill_lifebars: Handle<KiraAudioSource>,
 }
 
 fn game_setup(
@@ -617,6 +618,7 @@ fn game_setup(
     audio_res.sfx_channel = KiraAudioChannel::new("sfx".to_string());
     audio.set_volume_in_channel(0.5, &audio_res.sfx_channel);
     audio_res.sound_hit = asset_server.load("sounds/hit.ogg");
+    audio_res.sound_fill_lifebars = asset_server.load("sounds/sweep_fill2.ogg");
 
     // Main camera
     let camera_depth = 5.0;
@@ -696,16 +698,14 @@ fn game_setup(
     player_lifebars.orientation = LifebarOrientation::Vertical;
     player_lifebars.visible_pos = Vec2::new(screen_bounds.left + lifebar_margin_h, 0.);
     player_lifebars.hidden_pos = Vec2::new(screen_bounds.left - lifebar_margin_h, 0.);
-    player_lifebars.set_lifebars(
-        400.0,
-        [
-            Color::RED,
-            Color::ORANGE,
-            Color::YELLOW,
-            Color::GREEN,
-            Color::CYAN,
-        ],
-    );
+    let player_lifebar_colors = (0..12)
+        .map(|i| if i < 6 {
+            Color::rgb(1., i as f32 / 5., 0.)
+        } else {
+            Color::rgb(1. - (i - 6) as f32 / 5., 1., 0.)
+        })
+        .collect::<Vec<_>>();
+    player_lifebars.set_lifebars(800.0, player_lifebar_colors.clone());
     let player_lifebars_entity = LifebarHud::spawn(
         player_lifebars,
         "PlayerLifebar",
@@ -718,13 +718,6 @@ fn game_setup(
     );
 
     // Show player lifebars
-    let player_lifebar_colors = [
-        Color::RED,
-        Color::ORANGE,
-        Color::YELLOW,
-        Color::GREEN,
-        Color::CYAN,
-    ];
     let player_lifebars_count = player_lifebar_colors.len();
     let player_life_per_lifebar = 100.;
     init_events.send(InitLifebarsEvent {
@@ -944,6 +937,8 @@ fn update_hud(
     mut init_events: EventReader<InitLifebarsEvent>,
     mut show_events: EventReader<ShowLifebarsEvent>,
     mut update_events: EventReader<UpdateLifebarsEvent>,
+    audio: Res<KiraAudio>,
+    audio_res: Res<AudioRes>,
     //
     //asset_server: Res<AssetServer>,
     //audio: Res<KiraAudio>,
@@ -1012,6 +1007,10 @@ fn update_hud(
                 match hud.fill_seq {
                     LifebarFillSeqPhase::SlideIn => {
                         hud.fill_seq = LifebarFillSeqPhase::FillUp(0);
+                        audio.play_in_channel(
+                            audio_res.sound_fill_lifebars.clone(),
+                            &audio_res.sfx_channel,
+                        );
                         need_color_update = true;
                         let start = match hud.orientation {
                             LifebarOrientation::Horizontal => Vec3::new(0., 1., 1.),
@@ -1020,7 +1019,7 @@ fn update_hud(
                         over_animator.set_tweenable(Tween::new(
                             EaseMethod::Linear,
                             TweeningType::Once,
-                            Duration::from_secs_f32(1.5),
+                            Duration::from_secs_f32(1.1917), // 14.3s audio sweep <-> 12 bars
                             TransformScaleLens {
                                 start,
                                 end: Vec3::ONE,
