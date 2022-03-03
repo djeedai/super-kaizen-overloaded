@@ -4,8 +4,12 @@ use bevy::{
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
 };
+use bevy_tweening::{lens::*, *};
 use heron::prelude::*;
-use std::f32::consts::{PI, TAU};
+use std::{
+    f32::consts::{PI, TAU},
+    time::Duration,
+};
 
 use crate::{AppState, Bullet, Layer, Quad};
 
@@ -36,8 +40,14 @@ struct EnemyManager {
 impl EnemyManager {
     fn spawn(&self, mut commands: Commands, position: Vec3) {
         println!("SPAWN ENEMY @ {:?}", position);
+        let mut motion_pattern = EnterStayMotion::default();
+        motion_pattern.enter_height = 0.8;
+        let mut fire_tag = FireTagSpiral::default();
+        fire_tag.bullet_mesh = self.bullet_mesh.clone();
+        fire_tag.bullet_material = self.bullet_material.clone();
         let mut enemy_controller = EnemyController::default();
-        enemy_controller.fire_tag = Some(Box::new(FireTagSpiral::default()));
+        enemy_controller.motion_pattern = Some(Box::new(motion_pattern));
+        enemy_controller.fire_tag = Some(Box::new(fire_tag));
         commands
             .spawn_bundle(PbrBundle {
                 mesh: self.mesh.clone(),
@@ -47,6 +57,7 @@ impl EnemyManager {
             })
             .insert(Name::new("Enemy"))
             .insert(enemy_controller)
+            .insert(Animator::<Transform>::default().with_state(AnimatorState::Paused))
             // Physics
             .insert(RigidBody::KinematicPositionBased)
             .insert(CollisionShape::Sphere { radius: 0.1 })
@@ -64,12 +75,24 @@ struct FireTagContext<'w, 's> {
     dt: f32,
     origin: Vec3,
     commands: Commands<'w, 's>,
-    bullet_mesh: Handle<Mesh>,
-    bullet_material: Handle<StandardMaterial>,
 }
 
 impl<'w, 's> FireTagContext<'w, 's> {
-    fn fire(&mut self, angle: f32, speed: f32) {
+    fn new(dt: f32, origin: Vec3, commands: Commands<'w, 's>) -> Self {
+        FireTagContext {
+            dt,
+            origin,
+            commands,
+        }
+    }
+
+    fn fire(
+        &mut self,
+        angle: f32,
+        speed: f32,
+        mesh: Handle<Mesh>,
+        material: Handle<StandardMaterial>,
+    ) {
         // println!(
         //     "FIRE: origin={:?} angle={} speed={}",
         //     self.origin, angle, speed
@@ -77,8 +100,8 @@ impl<'w, 's> FireTagContext<'w, 's> {
         let rot = Quat::from_rotation_z(angle);
         self.commands
             .spawn_bundle(PbrBundle {
-                mesh: self.bullet_mesh.clone(),
-                material: self.bullet_material.clone(),
+                mesh,
+                material,
                 transform: Transform::from_rotation(rot).with_translation(self.origin),
                 ..Default::default()
             })
@@ -108,6 +131,8 @@ struct FireTagSpiral {
     bullet_speed: f32,
     fire_delay: f32,
     rotate_speed: f32,
+    bullet_mesh: Handle<Mesh>,
+    bullet_material: Handle<StandardMaterial>,
     //
     cur_time: f32,
     cur_angle: f32,
@@ -121,6 +146,8 @@ impl Default for FireTagSpiral {
             bullet_speed: 4.3,
             fire_delay: 0.04,
             rotate_speed: 35_f32.to_radians(),
+            bullet_mesh: Handle::default(),
+            bullet_material: Handle::default(),
             //
             cur_time: 0.,
             cur_angle: 0.,
@@ -171,7 +198,12 @@ impl FireTag for FireTagSpiral {
                 //     PI + cone_angle
                 // );
                 if self.cur_iter % 25 >= 5 || idx != aim_arm_idx {
-                    context.fire(angle, self.bullet_speed);
+                    context.fire(
+                        angle,
+                        self.bullet_speed,
+                        self.bullet_mesh.clone(),
+                        self.bullet_material.clone(),
+                    );
                 }
                 // sequence
                 angle = (angle + delta_angle) % TAU;
@@ -182,14 +214,103 @@ impl FireTag for FireTagSpiral {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MotionResult {
+    DoNothing,
+    StartFireTag,
+}
+
+trait MotionPattern {
+    fn do_motion(
+        &mut self,
+        dt: f32,
+        transform: &mut Transform,
+        animator: &mut Animator<Transform>,
+    ) -> MotionResult;
+}
+
+enum EnterStayPhase {
+    Idle,
+    Enter,
+    Stay,
+}
+
+struct EnterStayMotion {
+    phase: EnterStayPhase,
+    enter_height: f32,
+}
+
+impl Default for EnterStayMotion {
+    fn default() -> Self {
+        EnterStayMotion {
+            phase: EnterStayPhase::Idle,
+            enter_height: 0.,
+        }
+    }
+}
+
+impl MotionPattern for EnterStayMotion {
+    fn do_motion(
+        &mut self,
+        dt: f32,
+        transform: &mut Transform,
+        animator: &mut Animator<Transform>,
+    ) -> MotionResult {
+        match self.phase {
+            EnterStayPhase::Idle => {
+                self.phase = EnterStayPhase::Enter;
+                transform.translation = Vec3::new(5., self.enter_height, 0.);
+                let tween = Tween::new(
+                    EaseFunction::QuadraticOut,
+                    TweeningType::Once,
+                    Duration::from_secs_f32(5.),
+                    TransformPositionLens {
+                        start: transform.translation,
+                        end: Vec3::new(2., self.enter_height, 0.),
+                    },
+                );
+                animator.set_tweenable(tween);
+                animator.state = AnimatorState::Playing;
+                MotionResult::DoNothing
+            }
+            EnterStayPhase::Enter => {
+                if animator.progress() >= 1. {
+                    self.phase = EnterStayPhase::Stay;
+                    let tween = Tween::new(
+                        EaseFunction::QuadraticInOut,
+                        TweeningType::PingPong,
+                        Duration::from_secs_f32(3.),
+                        TransformPositionLens {
+                            start: transform.translation,
+                            end: transform.translation + Vec3::Y * 0.6,
+                        },
+                    );
+                    animator.set_tweenable(tween);
+                    animator.state = AnimatorState::Playing;
+                    MotionResult::StartFireTag
+                } else {
+                    MotionResult::DoNothing
+                }
+            }
+            EnterStayPhase::Stay => MotionResult::DoNothing,
+        }
+    }
+}
+
 #[derive(Component)]
 struct EnemyController {
+    motion_pattern: Option<Box<dyn MotionPattern + Send + Sync>>,
     fire_tag: Option<Box<dyn FireTag + Send + Sync>>,
+    fire_tag_started: bool,
 }
 
 impl Default for EnemyController {
     fn default() -> Self {
-        EnemyController { fire_tag: None }
+        EnemyController {
+            motion_pattern: None,
+            fire_tag: None,
+            fire_tag_started: false,
+        }
     }
 }
 
@@ -199,21 +320,27 @@ impl EnemyController {
         dt: f32,
         origin: Vec3,
         mut commands: Commands<'w, 's>,
-        bullet_mesh: Handle<Mesh>,
-        bullet_material: Handle<StandardMaterial>,
+        transform: &mut Transform,
+        animator: &mut Animator<Transform>,
     ) -> Commands<'w, 's> {
-        //println!("ENEMY_UPDATE: dt={} origin={:?}", dt, origin);
-        let mut context = FireTagContext {
-            dt,
-            origin,
-            commands,
-            bullet_mesh,
-            bullet_material,
-        };
-        if let Some(fire_tag) = &mut self.fire_tag {
-            fire_tag.execute(&mut context);
+        // Move
+        if let Some(motion_pattern) = &mut self.motion_pattern {
+            if motion_pattern.do_motion(dt, transform, animator) == MotionResult::StartFireTag {
+                self.fire_tag_started = true;
+            }
         }
-        context.commands
+
+        // Fire
+        if self.fire_tag_started {
+            //println!("ENEMY_UPDATE: dt={} origin={:?}", dt, origin);
+            let mut context = FireTagContext::new(dt, origin, commands);
+            if let Some(fire_tag) = &mut self.fire_tag {
+                fire_tag.execute(&mut context);
+            }
+            commands = context.commands;
+        }
+
+        commands
     }
 }
 
@@ -240,24 +367,28 @@ fn enemy_setup(
     manager.bullet_material = bullet_material;
 
     // TEMP
-    manager.spawn(commands, Vec3::new(2.1, 0., 0.));
+    manager.spawn(commands, Vec3::new(3., 0., 0.));
 }
 
 fn enemy_update(
     mut commands: Commands,
-    mut query: Query<(&mut EnemyController, &Transform)>,
+    mut query: Query<(
+        &mut EnemyController,
+        &mut Transform,
+        &mut Animator<Transform>,
+    )>,
     time: Res<Time>,
     manager: Res<EnemyManager>,
 ) {
     //println!("enemy_update() t={}", time.seconds_since_startup());
-    for (mut enemy, transform) in query.iter_mut() {
+    for (mut enemy, mut transform, mut animator) in query.iter_mut() {
         //println!("enemy xform={:?}", transform);
         commands = enemy.update(
             time.delta_seconds(),
             transform.translation,
             commands,
-            manager.bullet_mesh.clone(),
-            manager.bullet_material.clone(),
+            &mut *transform,
+            &mut *animator,
         );
     }
 }
