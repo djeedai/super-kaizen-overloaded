@@ -1,17 +1,12 @@
 name: Release
 
-# TEMP
 on:
-  pull_request:
-
-# on:
-#   push:
-#     tags:
-#       - '*'
+  push:
+    tags:
+      - '*'
 
 env:
   binary: super-kaizen-overloaded
-
 
 jobs:
 
