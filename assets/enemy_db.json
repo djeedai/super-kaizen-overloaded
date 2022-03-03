@@ -17,6 +17,7 @@
             "bullet_kind": "pink_donut"
         }
     ],
+    "timeline_delay": 14.0,
     "timeline": [
         {
             "time": 0.0,

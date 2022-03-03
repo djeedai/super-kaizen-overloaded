@@ -86,6 +86,7 @@ struct TimelineEvent {
 
 #[derive(Default)]
 struct Timeline {
+    start_time: f64,
     events: Vec<TimelineEvent>,
     index: usize,
     time: f64,
@@ -94,6 +95,7 @@ struct Timeline {
 #[derive(Debug, Clone, Deserialize)]
 struct EnemyDatabase {
     enemies: Vec<EnemyDescriptor>,
+    timeline_delay: f64,
     timeline: Vec<TimelineEvent>,
 }
 
@@ -133,7 +135,7 @@ impl EnemyManager {
         self.timeline.time += dt as f64;
         for index in self.timeline.index..self.timeline.events.len() {
             let ev = &self.timeline.events[index];
-            if ev.time > self.timeline.time {
+            if self.timeline.start_time + ev.time > self.timeline.time {
                 self.timeline.index = index;
                 return;
             }
@@ -668,6 +670,7 @@ fn setup_enemy(
         manager.add_descriptor(descriptor);
     }
 
+    manager.timeline.start_time = database.timeline_delay;
     manager.timeline.events = database.timeline;
 
     // TEMP
