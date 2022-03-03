@@ -88,6 +88,32 @@ impl Default for PlayerController {
     }
 }
 
+impl PlayerController {
+    fn spawn_bullet(&self, commands: &mut Commands, transform: &Transform) {
+        commands
+            .spawn_bundle(PbrBundle {
+                mesh: self.bullet_mesh.clone(),
+                material: self.bullet_material.clone(),
+                transform: *transform,
+                ..Default::default()
+            })
+            .insert(Bullet(Vec3::X * 5.))
+            // Rendering
+            .insert(NotShadowCaster)
+            .insert(NotShadowReceiver)
+            // Physics
+            .insert(RigidBody::Dynamic) // TODO - or Dynamic?
+            .insert(CollisionShape::Sphere { radius: 0.1 })
+            .insert(Velocity::from_linear(Vec3::X * 5.))
+            .insert(RotationConstraints::lock())
+            .insert(
+                CollisionLayers::none()
+                    .with_group(Layer::PlayerBullet)
+                    .with_masks(&[Layer::World, Layer::Enemy]),
+            );
+    }
+}
+
 #[derive(Component)]
 struct Player;
 
@@ -379,28 +405,12 @@ fn game_run(
         }
         controller.primary_cooloff += controller.primary_fire_delay;
         let mut transform = transform.clone();
-        transform.translation += controller.primary_fire_offset * SHIP1_SCALE;
-        commands
-            .spawn_bundle(PbrBundle {
-                mesh: controller.bullet_mesh.clone(),
-                material: controller.bullet_material.clone(),
-                transform,
-                ..Default::default()
-            })
-            .insert(Bullet(Vec3::X * 5.))
-            // Rendering
-            .insert(NotShadowCaster)
-            .insert(NotShadowReceiver)
-            // Physics
-            .insert(RigidBody::Dynamic) // TODO - or Dynamic?
-            .insert(CollisionShape::Sphere { radius: 0.1 })
-            .insert(Velocity::from_linear(Vec3::X * 5.))
-            .insert(RotationConstraints::lock())
-            .insert(
-                CollisionLayers::none()
-                    .with_group(Layer::PlayerBullet)
-                    .with_masks(&[Layer::World, Layer::Enemy]),
-            );
+        transform.translation += controller.primary_fire_offset * SHIP1_SCALE / 2.; // FIXME - fire origin
+        controller.spawn_bullet(&mut commands, &transform);
+        transform.translation.y += 0.1;
+        controller.spawn_bullet(&mut commands, &transform);
+        transform.translation.y -= 0.2;
+        controller.spawn_bullet(&mut commands, &transform);
     }
 
     // DEBUG
