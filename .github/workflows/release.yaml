@@ -10,7 +10,7 @@ on:
 #       - '*'
 
 env:
-  binary: unfair
+  binary: super-kaizen-overloaded
 
 
 jobs:

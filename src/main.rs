@@ -40,7 +40,7 @@ pub enum Layer {
 fn main() {
     let mut app = App::new();
     app.insert_resource(WindowDescriptor {
-        title: "unfair".to_string(),
+        title: "Super Kaizen Overloaded".to_string(),
         // width: 1200.,
         // height: 600.,
         vsync: true,
