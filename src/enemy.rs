@@ -11,7 +11,10 @@ use std::{
     time::Duration,
 };
 
-use crate::{AppState, Bullet, Layer, Quad};
+use crate::{
+    game::{DamageEvent, LifebarHud, LifebarOrientation, UpdateLifebarsEvent},
+    AppState, Bullet, Layer, Quad,
+};
 
 pub struct EnemyPlugin;
 
@@ -20,26 +23,37 @@ impl Plugin for EnemyPlugin {
         app.init_resource::<EnemyManager>()
             .add_system_set_to_stage(
                 CoreStage::Update,
-                SystemSet::on_enter(AppState::InGame).with_system(enemy_setup),
+                SystemSet::on_enter(AppState::InGame).with_system(setup_enemy),
             )
             .add_system_set_to_stage(
                 CoreStage::Update,
-                SystemSet::on_update(AppState::InGame).with_system(enemy_update),
+                SystemSet::on_update(AppState::InGame).with_system(update_enemy),
             );
     }
 }
 
-#[derive(Default)]
 struct EnemyManager {
     mesh: Handle<Mesh>,
     material: Handle<StandardMaterial>,
     bullet_mesh: Handle<Mesh>,
     bullet_material: Handle<StandardMaterial>,
+    boss_lifebar_entity: Entity,
+}
+
+impl Default for EnemyManager {
+    fn default() -> Self {
+        EnemyManager {
+            mesh: Handle::default(),
+            material: Handle::default(),
+            bullet_mesh: Handle::default(),
+            bullet_material: Handle::default(),
+            boss_lifebar_entity: Entity::from_raw(0),
+        }
+    }
 }
 
 impl EnemyManager {
     fn spawn(&self, commands: &mut Commands, position: Vec3) {
-        println!("SPAWN ENEMY @ {:?}", position);
         let mut motion_pattern = EnterStayMotion::default();
         motion_pattern.enter_height = position.y;
         let mut fire_tag = FireTagSpiral::default();
@@ -48,7 +62,9 @@ impl EnemyManager {
         let mut enemy_controller = EnemyController::default();
         enemy_controller.motion_pattern = Some(Box::new(motion_pattern));
         enemy_controller.fire_tag = Some(Box::new(fire_tag));
-        commands
+        enemy_controller.life = 10.;
+        enemy_controller.remain_life = enemy_controller.life;
+        let entity = commands
             .spawn_bundle(PbrBundle {
                 mesh: self.mesh.clone(),
                 material: self.material.clone(),
@@ -67,7 +83,9 @@ impl EnemyManager {
                 CollisionLayers::none()
                     .with_group(Layer::Enemy)
                     .with_masks(&[Layer::World, Layer::Player, Layer::PlayerBullet]),
-            );
+            )
+            .id();
+        println!("SPAWNED ENEMY {:?} @ {:?}", entity, position);
     }
 }
 
@@ -345,7 +363,7 @@ impl EnemyController {
     }
 }
 
-fn enemy_setup(
+fn setup_enemy(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut manager: ResMut<EnemyManager>,
@@ -362,10 +380,38 @@ fn enemy_setup(
         ..Default::default()
     });
 
+    // FIXME - Copied from game.rs :(
+    let hud_mat_black = materials.add(StandardMaterial {
+        base_color: Color::BLACK,
+        unlit: true,
+        alpha_mode: AlphaMode::Blend,
+        ..Default::default()
+    });
+
+    // Boss lifebars
+    let mut boss_lifebars = LifebarHud::default();
+    boss_lifebars.orientation = LifebarOrientation::Horizontal;
+    //boss_lifebars.visible_pos = Vec2::new(0., screen_bounds.top + lifebar_margin_v);
+    //boss_lifebars.hidden_pos = Vec2::new(0., screen_bounds.top - lifebar_margin_v);
+    boss_lifebars.visible_pos = Vec2::new(0., 1.5); // TODO
+    boss_lifebars.hidden_pos = Vec2::new(0., 2.0); // TODO
+    boss_lifebars.set_lifebars(40.0, [Color::RED, Color::ORANGE, Color::YELLOW]);
+    let boss_lifebar_entity = LifebarHud::spawn(
+        boss_lifebars,
+        "BossLifebar",
+        Vec2::new(4.01, 0.05),
+        hud_mat_black.clone(),
+        Vec2::new(4., 0.04),
+        &mut commands,
+        &mut *meshes,
+        &mut *materials,
+    );
+
     manager.mesh = meshes.add(Mesh::from(shape::Cube { size: 0.1 }));
     manager.material = materials.add(Color::rgb(0.8, 0.7, 0.6).into());
     manager.bullet_mesh = bullet_mesh;
     manager.bullet_material = bullet_material;
+    manager.boss_lifebar_entity = boss_lifebar_entity;
 
     // TEMP
     manager.spawn(&mut commands, Vec3::new(3., 0.8, 0.));
@@ -373,20 +419,49 @@ fn enemy_setup(
     manager.spawn(&mut commands, Vec3::new(3., -0.8, 0.));
 }
 
-fn enemy_update(
+fn update_enemy(
     mut commands: Commands,
     mut query: Query<(
+        Entity,
         &mut EnemyController,
         &mut Transform,
         &mut Animator<Transform>,
     )>,
     time: Res<Time>,
     manager: Res<EnemyManager>,
+    mut damage_events: EventReader<DamageEvent>,
+    mut lifebar_events: EventWriter<UpdateLifebarsEvent>,
 ) {
-    //println!("enemy_update() t={}", time.seconds_since_startup());
-    for (mut enemy, mut transform, mut animator) in query.iter_mut() {
+    //println!("update_enemy() t={}", time.seconds_since_startup());
+    // need to loop once per enemy, so collect all now
+    let damage_events = damage_events.iter().collect::<Vec<_>>();
+    for (entity, mut controller, mut transform, mut animator) in query.iter_mut() {
+        // Apply damage to enemy
+        let damage: f32 = damage_events
+            .iter()
+            .filter_map(|ev| {
+                if ev.entity == entity {
+                    Some(ev.damage)
+                } else {
+                    None
+                }
+            })
+            .sum();
+        if damage > 0. {
+            controller.remain_life -= damage;
+            lifebar_events.send(UpdateLifebarsEvent {
+                entity: manager.boss_lifebar_entity,
+                remain_life: controller.remain_life,
+            });
+        }
+        if controller.remain_life <= 0. {
+            commands.entity(entity).despawn_recursive();
+            println!("ENEMY {:?} KILLED", entity);
+            return;
+        }
+
         //println!("enemy xform={:?}", transform);
-        enemy.update(
+        controller.update(
             time.delta_seconds(),
             transform.translation,
             &mut commands,
