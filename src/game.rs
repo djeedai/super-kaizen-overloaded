@@ -210,6 +210,8 @@ pub struct InitLifebarsEvent {
 pub struct ShowLifebarsEvent {
     /// Entity holding the LifebarHud component of the lifebars to update.
     pub entity: Entity,
+    /// Play audio sweep fill while bars are filling up.
+    pub play_audio: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -231,7 +233,7 @@ pub enum LifebarFillSeqPhase {
     /// Off-screen, waiting.
     Idle,
     /// Slide inside screen from hidden to visible position.
-    SlideIn,
+    SlideIn(bool), // play audio sweep on fill start
     /// Fill up bars until full. Contains index of currently filling bar.
     FillUp(usize),
     /// Ready for use.
@@ -699,10 +701,12 @@ fn game_setup(
     player_lifebars.visible_pos = Vec2::new(screen_bounds.left + lifebar_margin_h, 0.);
     player_lifebars.hidden_pos = Vec2::new(screen_bounds.left - lifebar_margin_h, 0.);
     let player_lifebar_colors = (0..12)
-        .map(|i| if i < 6 {
-            Color::rgb(1., i as f32 / 5., 0.)
-        } else {
-            Color::rgb(1. - (i - 6) as f32 / 5., 1., 0.)
+        .map(|i| {
+            if i < 6 {
+                Color::rgb(1., i as f32 / 5., 0.)
+            } else {
+                Color::rgb(1. - (i - 6) as f32 / 5., 1., 0.)
+            }
         })
         .collect::<Vec<_>>();
     player_lifebars.set_lifebars(800.0, player_lifebar_colors.clone());
@@ -727,6 +731,7 @@ fn game_setup(
     });
     show_events.send(ShowLifebarsEvent {
         entity: player_lifebars_entity,
+        play_audio: true,
     });
 
     let bullet_texture = asset_server.load("textures/bullet1.png");
@@ -986,7 +991,7 @@ fn update_hud(
                 ));
                 animator.rewind();
                 animator.state = AnimatorState::Playing;
-                hud.fill_seq = LifebarFillSeqPhase::SlideIn;
+                hud.fill_seq = LifebarFillSeqPhase::SlideIn(ev.play_audio);
                 hud.index = 0; // start from bottom-most bar
             }
         }
@@ -1007,12 +1012,14 @@ fn update_hud(
                 over_animator.stop();
 
                 match hud.fill_seq {
-                    LifebarFillSeqPhase::SlideIn => {
+                    LifebarFillSeqPhase::SlideIn(play_audio) => {
                         hud.fill_seq = LifebarFillSeqPhase::FillUp(0);
-                        audio.play_in_channel(
-                            audio_res.sound_fill_lifebars.clone(),
-                            &audio_res.sfx_channel,
-                        );
+                        if play_audio {
+                            audio.play_in_channel(
+                                audio_res.sound_fill_lifebars.clone(),
+                                &audio_res.sfx_channel,
+                            );
+                        }
                         need_color_update = true;
                         let start = match hud.orientation {
                             LifebarOrientation::Horizontal => Vec3::new(0., 1., 1.),

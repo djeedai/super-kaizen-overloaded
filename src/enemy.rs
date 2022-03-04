@@ -243,6 +243,7 @@ impl EnemyManager {
                 });
                 show_events.send(ShowLifebarsEvent {
                     entity: self.boss_lifebar_entity,
+                    play_audio: false,
                 });
             }
 
