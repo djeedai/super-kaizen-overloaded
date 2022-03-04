@@ -18,7 +18,7 @@ use std::{
 use crate::{
     game::{
         DamageEvent, InitLifebarsEvent, LifebarHud, LifebarOrientation, PlayerController,
-        ShowLifebarsEvent, UpdateLifebarsEvent,
+        ScoreEvent, ShowLifebarsEvent, UpdateLifebarsEvent,
     },
     AppState, Bullet, Layer, Quad,
 };
@@ -71,6 +71,7 @@ struct EnemyDescriptor {
     life: f32,
     #[serde(default)]
     is_boss: bool,
+    kill_score: u32,
     fire_tag_kind: FireTagKind,
     motion_pattern_kind: MotionPatternKind,
     bullet_kind: BulletKind,
@@ -214,6 +215,7 @@ impl EnemyManager {
             enemy_controller.life = desc.life;
             enemy_controller.remain_life = desc.life;
             enemy_controller.is_boss = desc.is_boss;
+            enemy_controller.kill_score = desc.kill_score;
 
             let entity = commands
                 .spawn_bundle(PbrBundle {
@@ -624,6 +626,7 @@ struct EnemyController {
     life: f32,
     remain_life: f32,
     is_boss: bool,
+    kill_score: u32,
 }
 
 impl Default for EnemyController {
@@ -635,6 +638,7 @@ impl Default for EnemyController {
             life: 0.,
             remain_life: 0.,
             is_boss: false,
+            kill_score: 1,
         }
     }
 }
@@ -820,6 +824,7 @@ fn update_enemy(
     mut init_events: EventWriter<InitLifebarsEvent>,
     mut show_events: EventWriter<ShowLifebarsEvent>,
     mut lifebar_events: EventWriter<UpdateLifebarsEvent>,
+    mut score_events: EventWriter<ScoreEvent>,
 ) {
     //println!("update_enemy() t={}", time.seconds_since_startup());
 
@@ -855,8 +860,9 @@ fn update_enemy(
             }
         }
         if controller.remain_life <= 0. {
-            commands.entity(entity).despawn_recursive();
             println!("ENEMY {:?} KILLED", entity);
+            score_events.send(ScoreEvent(controller.kill_score));
+            commands.entity(entity).despawn_recursive();
             return;
         }
 

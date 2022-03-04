@@ -2,16 +2,18 @@
     "enemies": [
         {
             "name": "fly_by",
-            "life": 20,
+            "life": 10,
             "is_boss": false,
+            "kill_score": 50,
             "fire_tag_kind": "aim_burst",
             "motion_pattern_kind": "fly_by",
             "bullet_kind": "white_ball"
         },
         {
             "name": "6_arm_spiral",
-            "life": 100,
+            "life": 80,
             "is_boss": false,
+            "kill_score": 420,
             "fire_tag_kind": "spiral",
             "motion_pattern_kind": "enter_stay",
             "bullet_kind": "pink_donut"
@@ -20,6 +22,7 @@
             "name": "6_arm_double_spiral_boss",
             "life": 300,
             "is_boss": true,
+            "kill_score": 1500,
             "fire_tag_kind": "double_spiral",
             "motion_pattern_kind": "enter_stay",
             "bullet_kind": "pink_donut"

@@ -30,6 +30,7 @@ impl Plugin for GamePlugin {
             .add_event::<InitLifebarsEvent>()
             .add_event::<ShowLifebarsEvent>()
             .add_event::<UpdateLifebarsEvent>()
+            .add_event::<ScoreEvent>()
             .init_resource::<AudioRes>()
             .add_plugin(bevy_atmosphere::AtmospherePlugin { dynamic: true })
             .add_plugin(InputManagerPlugin::<PlayerAction>::default())
@@ -375,6 +376,11 @@ impl LifebarHud {
 #[derive(Component)]
 struct LifebarCounter;
 
+#[derive(Component)]
+struct ScoreCounter(u32);
+
+pub struct ScoreEvent(pub u32);
+
 fn lifebar_text_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn_bundle(UiCameraBundle::default());
 
@@ -418,6 +424,34 @@ fn lifebar_text_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ..Default::default()
                 })
                 .insert(LifebarCounter);
+
+            parent
+                .spawn_bundle(TextBundle {
+                    style: Style {
+                        align_self: AlignSelf::FlexStart,
+                        position_type: PositionType::Absolute,
+                        position: Rect {
+                            top: Val::Px(50.0),
+                            right: Val::Px(50.0),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    text: Text::with_section(
+                        "00000000",
+                        TextStyle {
+                            font: asset_server.load("fonts/FiraMono-Regular.ttf"),
+                            font_size: 48.0,
+                            color: Color::rgb_u8(32, 32, 32),
+                        },
+                        TextAlignment {
+                            horizontal: HorizontalAlign::Right,
+                            ..Default::default()
+                        },
+                    ),
+                    ..Default::default()
+                })
+                .insert(ScoreCounter(0));
         });
 }
 
@@ -961,12 +995,14 @@ fn update_hud(
         (&mut LifebarOver, &mut Transform, &mut Animator<Transform>),
         Without<LifebarHud>,
     >,
-    mut text_query: Query<(&mut Text, &mut LifebarCounter)>,
+    mut text_query: Query<(&mut Text, &mut LifebarCounter), Without<ScoreCounter>>,
+    mut q_score: Query<(&mut Text, &mut ScoreCounter), Without<LifebarCounter>>,
     player_controller: Query<&PlayerController>, // FIXME - bad design
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut init_events: EventReader<InitLifebarsEvent>,
     mut show_events: EventReader<ShowLifebarsEvent>,
     mut update_events: EventReader<UpdateLifebarsEvent>,
+    mut score_events: EventReader<ScoreEvent>,
     audio: Res<KiraAudio>,
     audio_res: Res<AudioRes>,
     //
@@ -1169,6 +1205,15 @@ fn update_hud(
         //         }
         //     }
         // }
+
+        // Update the score text
+        if !q_score.is_empty() {
+            let (mut text, mut counter) = q_score.single_mut();
+            for ev in score_events.iter() {
+                counter.0 += ev.0;
+            }
+            text.sections[0].value = format!("{}", counter.0).into();
+        }
     }
 }
 
