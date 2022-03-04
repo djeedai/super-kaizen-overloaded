@@ -69,22 +69,35 @@ impl Default for AudioManager {
 fn menu_run(
     mut q_menu: Query<(&mut Menu, &ActionState<MenuAction>)>,
     mut q_animators: Query<(&Button, &mut Animator<Transform>)>,
+    q_buttons: Query<(&Button, &Node, &GlobalTransform)>,
     mut exit: EventWriter<AppExit>,
     audio: Res<KiraAudio>,
     mut app_state: ResMut<State<AppState>>,
+    mut cursor_moved_events: EventReader<CursorMoved>,
+    mouse_button_input: Res<Input<MouseButton>>,
 ) {
     let (mut menu, action_state) = q_menu.single_mut();
     let prev_sel = menu.selected_index;
     if action_state.just_pressed(&MenuAction::SelectNext) {
         menu.selected_index = (menu.selected_index + 1).min(1);
-        audio.play_in_channel(menu.sound_click.clone(), &menu.sound_channel_sfx);
     }
     if action_state.just_pressed(&MenuAction::SelectPrev) {
         menu.selected_index = (menu.selected_index - 1).max(0);
-        audio.play_in_channel(menu.sound_click.clone(), &menu.sound_channel_sfx);
+    }
+    for ev in cursor_moved_events.iter() {
+        for (button, node, transform) in q_buttons.iter() {
+            let origin = transform.translation.truncate();
+            let half_size = node.size / 2.;
+            if (origin.x - ev.position.x).abs() < half_size.x
+                && (origin.y - ev.position.y).abs() < half_size.y
+            {
+                menu.selected_index = button.0;
+            }
+        }
     }
 
     if prev_sel != menu.selected_index {
+        audio.play_in_channel(menu.sound_click.clone(), &menu.sound_channel_sfx);
         for (button, mut animator) in q_animators.iter_mut() {
             if button.0 == prev_sel {
                 let tween_out = Tween::new(
@@ -145,6 +158,8 @@ fn menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     input_map.insert(MenuAction::ClickButton, KeyCode::Return);
     input_map.insert(MenuAction::ClickButton, KeyCode::Space);
     input_map.insert(MenuAction::ClickButton, GamepadButtonType::South);
+    #[cfg(not(debug_assertions))] // only in release, otherwise annoying with egui inspector
+    input_map.insert(MenuAction::ClickButton, MouseButton::Left);
 
     let container = commands
         .spawn_bundle(NodeBundle {

@@ -760,7 +760,9 @@ fn game_setup(
     input_map.insert(PlayerAction::MoveRight, GamepadButtonType::DPadDown);
     input_map.insert(PlayerAction::ShootPrimary, KeyCode::Space);
     input_map.insert(PlayerAction::ShootPrimary, KeyCode::LControl);
-    //input_map.insert(PlayerAction::ShootPrimary, MouseButton::Left);
+    #[cfg(not(debug_assertions))] // only in release, otherwise annoying with egui inspector
+    input_map.insert(PlayerAction::ShootPrimary, MouseButton::Left);
+    #[cfg(debug_assertions)] // debug feature
     input_map.insert(PlayerAction::DebugSpawnBoss, KeyCode::F1);
 
     // Player entity
