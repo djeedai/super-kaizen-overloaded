@@ -1,12 +1,14 @@
 use bevy::{
     app::CoreStage,
     asset::AssetStage,
+    core::FloatOrd,
     pbr::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
     utils::HashMap,
 };
 use bevy_tweening::{lens::*, *};
 use heron::prelude::*;
+use rand::{distributions::WeightedIndex, prelude::*};
 use serde::Deserialize;
 use std::{
     f32::consts::{PI, TAU},
@@ -737,7 +739,67 @@ fn setup_enemy(
     }
 
     manager.timeline.start_time = database.timeline_delay;
-    manager.timeline.events = database.timeline;
+    //manager.timeline.events = database.timeline;
+
+    let mut rng = thread_rng();
+    let enemies = ["fly_by", "6_arm_spiral", "6_arm_double_spiral_boss"];
+
+    // fly_by = often
+    {
+        let mut time = 0.;
+        let min_time = 0.15;
+        for i in 0..100 {
+            time += rng.gen_range(min_time..min_time * 1.5);
+            let start_pos = Vec3::new(5., rng.gen_range(-1.5..1.5), 0.);
+            manager.timeline.events.push(TimelineEvent {
+                time,
+                enemy: "fly_by".into(),
+                start_pos,
+            });
+        }
+    }
+
+    // 6_arm_spiral = sometimes
+    {
+        let mut time = 0.;
+        let min_time = 6.;
+        for i in 0..20 {
+            time += rng.gen_range(min_time..min_time * 1.5);
+            let start_pos = Vec3::new(5., rng.gen_range(-1.5..1.5), 0.);
+            manager.timeline.events.push(TimelineEvent {
+                time,
+                enemy: "6_arm_spiral".into(),
+                start_pos,
+            });
+        }
+    }
+
+    // 6_arm_double_spiral_boss = rarely
+    {
+        let mut time = 0.;
+        let min_time = 30.;
+        for i in 0..3 {
+            time += rng.gen_range(min_time..min_time * 1.5);
+            let start_pos = Vec3::new(5., rng.gen_range(-1.5..1.5), 0.);
+            manager.timeline.events.push(TimelineEvent {
+                time,
+                enemy: "6_arm_double_spiral_boss".into(),
+                start_pos,
+            });
+        }
+    }
+
+    // Sort by time
+    manager
+        .timeline
+        .events
+        .sort_by_key(|ev| FloatOrd(ev.time as f32));
+    for (i, ev) in manager.timeline.events.iter().enumerate() {
+        println!(
+            "[{}] t={} enemy={} start_pos={:?}",
+            i, ev.time, ev.enemy, ev.start_pos
+        );
+    }
 }
 
 fn update_enemy(
