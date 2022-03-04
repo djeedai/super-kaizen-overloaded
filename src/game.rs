@@ -467,6 +467,10 @@ fn update_player(
         .sum();
     if player_damage > 0. {
         controller.remain_life -= player_damage;
+        // println!(
+        //     "Player damaged: damage={} remain_life={} target_hud={:?}",
+        //     player_damage, controller.remain_life, controller.lifebar_entity
+        // );
         lifebar_events.send(UpdateLifebarsEvent {
             entity: controller.lifebar_entity,
             remain_life: controller.remain_life,
@@ -508,8 +512,14 @@ fn update_player(
         } else {
             q_camera.single().screen_bounds
         };
-        transform.translation.x = transform.translation.x.clamp(screen_bounds.left, screen_bounds.right);
-        transform.translation.y = transform.translation.y.clamp(screen_bounds.bottom, screen_bounds.top);
+        transform.translation.x = transform
+            .translation
+            .x
+            .clamp(screen_bounds.left, screen_bounds.right);
+        transform.translation.y = transform
+            .translation
+            .y
+            .clamp(screen_bounds.bottom, screen_bounds.top);
         dv
     } else {
         Vec2::ZERO
@@ -963,6 +973,9 @@ fn update_hud(
     //asset_server: Res<AssetServer>,
     //audio: Res<KiraAudio>,
 ) {
+    // #4083 - EventReader::iter() is draining, cannot loop
+    let update_events = update_events.iter().collect::<Vec<_>>();
+
     // Initialize any lifebar HUD if needed
     for ev in init_events.iter() {
         if let Ok((_, mut hud, _, _)) = hud_query.get_mut(ev.entity) {
@@ -1074,6 +1087,7 @@ fn update_hud(
                     .filter(|ev| ev.entity == hud_entity)
                     .last()
                 {
+                    //println!("update_events: ")
                     let total_life = (hud.life * hud.lifebars.len() as f32).max(1.);
                     let new_index = ev.remain_life / hud.life;
                     let over_progress = new_index.fract();
