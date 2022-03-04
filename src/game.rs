@@ -65,9 +65,10 @@ fn update_sky_from_sun(
     time: Res<Time>,
 ) {
     if let Some((mut light_trans, mut directional)) = query.single_mut().into() {
-        // TODO - Control that better to not fall into night
-        light_trans.rotation =
-            Quat::from_rotation_x(-PI + PI * time.seconds_since_startup() as f32 / 60.);
+        // -PI to 0 and back
+        let ratio = (time.seconds_since_startup() as f32 / 60.).fract();
+        let ratio = ((ratio * PI * 2.).sin() + 1.) / 2.;
+        light_trans.rotation = Quat::from_rotation_x(-PI + PI * ratio);
 
         // Update sky from sun direction
         let pos = light_trans.rotation.mul_vec3(Vec3::Z);
