@@ -439,6 +439,7 @@ fn update_player(
     time: Res<Time>,
     mut damage_events: EventReader<DamageEvent>,
     mut lifebar_events: EventWriter<UpdateLifebarsEvent>,
+    q_camera: Query<&MainCamera>,
     // DEBUG
     //mut init_events: EventWriter<InitLifebarsEvent>,
     //mut show_events: EventWriter<ShowLifebarsEvent>,
@@ -497,6 +498,18 @@ fn update_player(
         const SPEED: f32 = 1.6;
         let dv = input_dir * SPEED * dt;
         transform.translation += Vec3::new(dv.x, dv.y, 0.);
+        let screen_bounds = if q_camera.is_empty() {
+            Rect::<f32> {
+                left: -3.49,
+                right: 3.49,
+                bottom: -1.96,
+                top: 1.96,
+            }
+        } else {
+            q_camera.single().screen_bounds
+        };
+        transform.translation.x = transform.translation.x.clamp(screen_bounds.left, screen_bounds.right);
+        transform.translation.y = transform.translation.y.clamp(screen_bounds.bottom, screen_bounds.top);
         dv
     } else {
         Vec2::ZERO
