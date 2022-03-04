@@ -381,8 +381,13 @@ struct ScoreCounter(u32);
 
 pub struct ScoreEvent(pub u32);
 
+#[derive(Component)]
+struct GameOverText;
+
 fn lifebar_text_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn_bundle(UiCameraBundle::default());
+
+    let font = asset_server.load("fonts/ShareTechMono-Regular.ttf");
 
     commands
         .spawn_bundle(NodeBundle {
@@ -412,7 +417,7 @@ fn lifebar_text_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     text: Text::with_section(
                         "",
                         TextStyle {
-                            font: asset_server.load("fonts/FiraMono-Regular.ttf"),
+                            font: font.clone(),
                             font_size: 26.0,
                             color: Color::rgb_u8(32, 32, 32),
                         },
@@ -440,7 +445,7 @@ fn lifebar_text_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     text: Text::with_section(
                         "00000000",
                         TextStyle {
-                            font: asset_server.load("fonts/FiraMono-Regular.ttf"),
+                            font: font.clone(),
                             font_size: 48.0,
                             color: Color::rgb_u8(32, 32, 32),
                         },
@@ -452,6 +457,37 @@ fn lifebar_text_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ..Default::default()
                 })
                 .insert(ScoreCounter(0));
+
+            parent
+                .spawn_bundle(TextBundle {
+                    style: Style {
+                        align_self: AlignSelf::FlexStart,
+                        position_type: PositionType::Absolute,
+                        position: Rect {
+                            top: Val::Px(50.0),
+                            bottom: Val::Px(50.0),
+                            left: Val::Px(50.0),
+                            right: Val::Px(50.0),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    text: Text::with_section(
+                        "GAME OVER",
+                        TextStyle {
+                            font: font.clone(),
+                            font_size: 144.0,
+                            color: Color::rgb_u8(128, 128, 32),
+                        },
+                        TextAlignment {
+                            horizontal: HorizontalAlign::Center,
+                            ..Default::default()
+                        },
+                    ),
+                    visibility: Visibility { is_visible: false },
+                    ..Default::default()
+                })
+                .insert(GameOverText);
         });
 }
 
@@ -474,6 +510,7 @@ fn update_player(
     mut damage_events: EventReader<DamageEvent>,
     mut lifebar_events: EventWriter<UpdateLifebarsEvent>,
     q_camera: Query<&MainCamera>,
+    mut q_gameover: Query<&mut Visibility, With<GameOverText>>,
     // DEBUG
     //mut init_events: EventWriter<InitLifebarsEvent>,
     //mut show_events: EventWriter<ShowLifebarsEvent>,
@@ -511,6 +548,10 @@ fn update_player(
         });
     }
     if controller.remain_life <= 0. {
+        if !q_gameover.is_empty() {
+            let mut vis = q_gameover.single_mut();
+            vis.is_visible = true;
+        }
         commands.entity(player_entity).despawn_recursive();
         // GAME ENDS
         println!("PLAYER KILLED");
