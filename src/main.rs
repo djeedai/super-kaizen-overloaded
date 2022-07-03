@@ -3,8 +3,9 @@
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
+    window::PresentMode,
 };
-use bevy_kira_audio::{Audio, AudioPlugin};
+use bevy_kira_audio::{Audio, AudioApp, AudioPlugin};
 use bevy_tweening::*;
 use heron::prelude::*;
 
@@ -18,7 +19,7 @@ mod menu;
 
 use debug::DebugPlugin;
 use enemy::EnemyPlugin;
-use game::{Bullet, GamePlugin, Quad};
+use game::{Bullet, GamePlugin, Quad, SfxAudio};
 use menu::MenuPlugin;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -43,7 +44,7 @@ fn main() {
         title: "Super Kaizen Overloaded".to_string(),
         // width: 1200.,
         // height: 600.,
-        vsync: true,
+        present_mode: PresentMode::Fifo, // vsync
         ..Default::default()
     })
     .insert_resource(ClearColor(Color::rgba(0., 0., 0., 0.)))
@@ -58,6 +59,7 @@ fn main() {
 
     app.add_plugin(TweeningPlugin)
         .add_plugin(AudioPlugin)
+        .add_audio_channel::<SfxAudio>()
         .add_plugin(PhysicsPlugin::default());
 
     let initial_state = AppState::Boot;

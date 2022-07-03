@@ -14,7 +14,7 @@ use std::time::Duration;
 
 pub struct MenuPlugin;
 
-use crate::AppState;
+use crate::{AppState, SfxAudio};
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
@@ -41,7 +41,6 @@ enum MenuAction {
 #[derive(Component, Default)]
 struct Menu {
     selected_index: i32,
-    sound_channel_sfx: KiraAudioChannel,
     sound_click: Handle<KiraAudioSource>,
 }
 
@@ -72,16 +71,17 @@ fn menu_run(
     q_buttons: Query<(&Button, &Node, &GlobalTransform)>,
     mut exit: EventWriter<AppExit>,
     audio: Res<KiraAudio>,
+    sfx_audio: Res<KiraAudioChannel<SfxAudio>>,
     mut app_state: ResMut<State<AppState>>,
     mut cursor_moved_events: EventReader<CursorMoved>,
     mouse_button_input: Res<Input<MouseButton>>,
 ) {
     let (mut menu, action_state) = q_menu.single_mut();
     let prev_sel = menu.selected_index;
-    if action_state.just_pressed(&MenuAction::SelectNext) {
+    if action_state.just_pressed(MenuAction::SelectNext) {
         menu.selected_index = (menu.selected_index + 1).min(1);
     }
-    if action_state.just_pressed(&MenuAction::SelectPrev) {
+    if action_state.just_pressed(MenuAction::SelectPrev) {
         menu.selected_index = (menu.selected_index - 1).max(0);
     }
     for ev in cursor_moved_events.iter() {
@@ -97,7 +97,7 @@ fn menu_run(
     }
 
     if prev_sel != menu.selected_index {
-        audio.play_in_channel(menu.sound_click.clone(), &menu.sound_channel_sfx);
+        sfx_audio.play(menu.sound_click.clone());
         for (button, mut animator) in q_animators.iter_mut() {
             if button.0 == prev_sel {
                 let tween_out = Tween::new(
@@ -127,7 +127,7 @@ fn menu_run(
         }
     }
 
-    if action_state.just_pressed(&MenuAction::ClickButton) {
+    if action_state.just_pressed(MenuAction::ClickButton) {
         match menu.selected_index {
             0 => app_state.set(AppState::InGame).unwrap(),
             1 => exit.send(AppExit),
@@ -145,7 +145,6 @@ fn menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let title_image = asset_server.load("title.png");
 
     let mut menu = Menu::default();
-    menu.sound_channel_sfx = KiraAudioChannel::new("sfx".to_string());
     menu.sound_click = asset_server.load("sounds/click4.ogg");
 
     let mut input_map = InputMap::default();

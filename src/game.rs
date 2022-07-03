@@ -32,7 +32,10 @@ impl Plugin for GamePlugin {
             .add_event::<UpdateLifebarsEvent>()
             .add_event::<ScoreEvent>()
             .init_resource::<AudioRes>()
-            .add_plugin(bevy_atmosphere::AtmospherePlugin { dynamic: true })
+            .add_plugin(bevy_atmosphere::AtmospherePlugin {
+                dynamic: true,
+                ..default()
+            })
             .add_plugin(InputManagerPlugin::<PlayerAction>::default())
             .add_system_set_to_stage(
                 CoreStage::PreUpdate,
@@ -561,16 +564,16 @@ fn update_player(
 
     // Move player
     controller.input_dir = Vec2::ZERO;
-    if action_state.pressed(&PlayerAction::MoveUp) {
+    if action_state.pressed(PlayerAction::MoveUp) {
         controller.input_dir.y += 1.;
     }
-    if action_state.pressed(&PlayerAction::MoveDown) {
+    if action_state.pressed(PlayerAction::MoveDown) {
         controller.input_dir.y -= 1.;
     }
-    if action_state.pressed(&PlayerAction::MoveLeft) {
+    if action_state.pressed(PlayerAction::MoveLeft) {
         controller.input_dir.x -= 1.;
     }
-    if action_state.pressed(&PlayerAction::MoveRight) {
+    if action_state.pressed(PlayerAction::MoveRight) {
         controller.input_dir.x += 1.;
     }
     let dv = if let Some(input_dir) = controller.input_dir.try_normalize() {
@@ -617,7 +620,7 @@ fn update_player(
 
     let was_cooling = controller.primary_cooloff > 0.;
     controller.primary_cooloff -= dt;
-    if action_state.pressed(&PlayerAction::ShootPrimary) && controller.primary_cooloff <= 0. {
+    if action_state.pressed(PlayerAction::ShootPrimary) && controller.primary_cooloff <= 0. {
         if !was_cooling {
             controller.primary_cooloff = 0.;
         }
@@ -695,8 +698,10 @@ fn despawn_bullets_outside_screen(
 }
 
 #[derive(Default)]
+pub(crate) struct SfxAudio;
+
+#[derive(Default)]
 struct AudioRes {
-    sfx_channel: KiraAudioChannel,
     sound_hit: Handle<KiraAudioSource>,
     sound_fill_lifebars: Handle<KiraAudioSource>,
 }
@@ -705,6 +710,7 @@ fn game_setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     audio: Res<KiraAudio>,
+    sfx_audio: Res<KiraAudioChannel<SfxAudio>>,
     windows: Res<Windows>,
     mut audio_res: ResMut<AudioRes>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -716,8 +722,8 @@ fn game_setup(
 
     let ship_mesh: Handle<Scene> = asset_server.load("ship1.glb#Scene0");
 
-    audio_res.sfx_channel = KiraAudioChannel::new("sfx".to_string());
-    audio.set_volume_in_channel(0.5, &audio_res.sfx_channel);
+    sfx_audio.set_volume(0.5);
+
     audio_res.sound_hit = asset_server.load("sounds/hit.ogg");
     audio_res.sound_fill_lifebars = asset_server.load("sounds/sweep_fill2.ogg");
 
@@ -957,6 +963,7 @@ fn detect_collisions(
     mut damage_events: EventWriter<DamageEvent>,
     query_player: Query<&mut PlayerController>,
     audio: Res<KiraAudio>,
+    sfx_audio: Res<KiraAudioChannel<SfxAudio>>,
     audio_res: Res<AudioRes>,
 ) {
     for event in collision_events.iter() {
@@ -988,14 +995,14 @@ fn detect_collisions(
                         entity: data1.rigid_body_entity(),
                         damage: 1.,
                     });
-                    audio.play_in_channel(audio_res.sound_hit.clone(), &audio_res.sfx_channel);
+                    sfx_audio.play(audio_res.sound_hit.clone());
                 }
                 if data2.collision_layers().contains_group(Layer::Enemy) {
                     damage_events.send(DamageEvent {
                         entity: data2.rigid_body_entity(),
                         damage: 1.,
                     });
-                    audio.play_in_channel(audio_res.sound_hit.clone(), &audio_res.sfx_channel);
+                    sfx_audio.play(audio_res.sound_hit.clone());
                 }
 
                 // Despawn bullet
@@ -1046,6 +1053,7 @@ fn update_hud(
     mut update_events: EventReader<UpdateLifebarsEvent>,
     mut score_events: EventReader<ScoreEvent>,
     audio: Res<KiraAudio>,
+    sfx_audio: Res<KiraAudioChannel<SfxAudio>>,
     audio_res: Res<AudioRes>,
     //
     //asset_server: Res<AssetServer>,
@@ -1119,10 +1127,7 @@ fn update_hud(
                     LifebarFillSeqPhase::SlideIn(play_audio) => {
                         hud.fill_seq = LifebarFillSeqPhase::FillUp(0);
                         if play_audio {
-                            audio.play_in_channel(
-                                audio_res.sound_fill_lifebars.clone(),
-                                &audio_res.sfx_channel,
-                            );
+                            sfx_audio.play(audio_res.sound_fill_lifebars.clone());
                         }
                         need_color_update = true;
                         let start = match hud.orientation {
@@ -1296,9 +1301,9 @@ impl From<Quad> for Mesh {
 
         let mut mesh = Mesh::new(bevy::render::render_resource::PrimitiveTopology::TriangleList);
         mesh.set_indices(Some(indices));
-        mesh.set_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-        mesh.set_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-        mesh.set_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
         mesh
     }
 }
